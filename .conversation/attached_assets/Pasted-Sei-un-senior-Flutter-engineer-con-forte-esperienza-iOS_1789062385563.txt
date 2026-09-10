@@ -1,0 +1,293 @@
+Sei un senior Flutter engineer con forte esperienza iOS.
+Costruisci da zero un'app di allenamento in palestra locale, offline-first, che replica (e
+migliora) un'app esistente scritta in Qt/C++. L'app esistente funziona ed è testata: devi
+rispettarne esattamente le regole di dominio descritte qui sotto, rifacendo l'interfaccia in
+modo moderno, fluido e nativo iOS.
+
+1. Vincoli generali
+Lingua dell'interfaccia: italiano. Tutti i testi UI in italiano (es. "giorni di fila",
+"Ciclo 1 · giorno 2 di 7", "Hai perso la streak"). Il codice e i commenti in inglese o italiano,
+basta che sia coerente.
+Nessun backend, nessun login, nessun cloud, nessuna pubblicità, nessun acquisto in-app.
+Tutto è locale sul dispositivo.
+iOS first: target iOS 16+, deve girare benissimo su iPhone (da SE a 16 Pro Max),
+schermo intero, notch / Dynamic Island, home indicator.
+Il progetto deve compilare ed essere eseguibile (flutter run) con Flutter stable e Dart 3.
+Niente placeholder "TODO": ogni schermata e ogni regola qui descritta deve essere
+implementata davvero.
+2. Stack e architettura
+Flutter (canale stable), Dart 3, null-safety totale.
+
+State management: Riverpod (flutter_riverpod + riverpod_generator) oppure Bloc, a tua
+scelta, ma dichiaralo nel README e sii coerente. Le regole di dominio devono stare in classi
+pure, senza dipendenze da Flutter, per essere testabili.
+
+Persistenza: Drift (SQLite) con migrazioni versionate; lo schema è in §4 e deve
+essere quello. Usa drift + drift_flutter (o sqlite3_flutter_libs).
+
+Modelli immutabili: freezed + json_serializable.
+
+Date: solo date di calendario (no orari), formato ISO YYYY-MM-DD, confronti con
+DateTime(year, month, day) normalizzato a mezzanotte oppure con un value object Date.
+
+Formattazione italiana: pacchetto intl con initializeDateFormatting('it_IT').
+
+Struttura consigliata (feature-first):
+
+text
+
+lib/
+  main.dart
+  app/            # tema, router (go_router), costanti
+  core/           # date utils, risultati, estensioni
+  data/
+    db/           # database Drift, tabelle, DAO, migrazioni
+    repositories/
+  domain/         # entità + regole pure (streak, ciclo, volume, 1RM)
+  features/
+    workout/      # pagina principale (giorni + serie)
+    programs/     # lista programmi + editor
+    analytics/    # statistiche e grafici
+    streak/       # schermate celerazione/perdita
+  shared/widgets/ # componenti riusabili iOS-style
+test/             # unit + widget test
+Test: flutter_test per le regole pure (obbligatorio, vedi §9) e widget test per le
+schermate principali. flutter analyze deve passare senza warning.
+
+3. Design system (iOS moderno)
+Look & feel: iOS nativo, non Material. Usa CupertinoApp, CupertinoPageScaffold,
+CupertinoNavigationBar (con large title dove ha senso), CupertinoSliverNavigationBar con
+effetto collapse, liste inset-grouped (sezioni con angoli arrotondati e separatori sottili),
+showCupertinoDialog / showCupertinoModalPopup, CupertinoTabScaffold con barra
+traslucida con blur in basso.
+Icone: CupertinoIcons (o SF Symbols se usi un pacchetto compatibile, purché sia
+dichiarato e funzionante). Niente icone Material.
+Tema scuro di default (l'app è pensata in palestra), con supporto a light mode:
+sfondo #0F1115, card/gruppi #1B1E24, separatori #2A2D33
+testo principale #F2F2F2, testo secondario #9A9EA6
+accento viola #7C4DFF, streak/fuoco arancione #FF9800, errore/fallito #FF5252,
+successo #00C853
+angoli: 12–14 px su card e dialog, 8 px su chip; pulsanti "filled" viola con testo bianco,
+pulsanti secondari solo bordo.
+Safe area sempre rispettata (notch, Dynamic Island, home indicator), contenuto mai sotto le
+barre di sistema.
+Tipografia: SF Pro (di sistema), Dynamic Type: supporta l'ingrandimento testi di iOS senza
+rompere i layout (MediaQuery.textScalerOf, layout flessibili, niente altezze fisse sul testo).
+Accessibilità: etichette semantica/Semantics su pulsanti e grafici, contrasto adeguato,
+supporto VoiceOver.
+Micro-interazioni iOS: HapticFeedback.lightImpact() su azioni, selectionClick su
+toggle, mediumImpact sul completamento di un giorno; animazioni spring (curve
+Curves.easeOutBack o SpringDescription), 60/120 fps, transizioni CupertinoPageTransition.
+Niente MaterialApp, Scaffold, AppBar, SnackBar: tutto in stile Cupertino.
+4. Modello dati (Drift/SQLite — schema esatto)
+text
+
+programs(id, name UNIQUE, is_active, cycle_start TEXT ISO, cycle_number INT DEFAULT 1)
+days(id, program_id, day_order INT, day_name TEXT, day_type TEXT, is_completed INT,
+     is_current INT, is_expanded INT, has_been_completed INT, is_failed INT)
+exercises(id, day_id, exercise_order INT, name TEXT, sets INT, reps INT, weight REAL)
+exercise_sets(id, exercise_id, set_index INT, weight REAL, reps INT, UNIQUE(exercise_id, set_index))
+workout_log(id, day_id, program_id, completed_on TEXT ISO, streak_after INT, deadline TEXT ISO)
+cycle_history(id, program_id, cycle_number, cycle_start, day_order, day_name, day_type,
+              day_completed, exercise_order, exercise_name, target_sets, target_reps,
+              set_index, weight, reps_done, completed_on)
+exercise_catalog(id, name UNIQUE, group_name TEXT DEFAULT 'Other')
+settings(key TEXT PRIMARY KEY, value TEXT)
+Note:
+
+days.day_type vale Upper / Lower / Rest.
+Un solo programma è attivo (is_active = 1).
+Le migrazioni devono essere idempotenti (l'app esistente già si aggiornava da versioni
+precedenti con ALTER TABLE ... ADD COLUMN condizionali).
+Catalogo di partenza (popolato al primo avvio, minimo 4 esercizi per gruppo, italiano o
+inglese coerente con il nome usato nel programma default):
+Petto (Chest), Schiena (Back), Spalle (Shoulders), Bicipiti (Biceps), Tricipiti (Triceps),
+Gambe (Legs), Addome (Core).
+
+5. Regole di dominio (rispettarle alla lettera)
+5.1 Programma "default" (hardcoded, creato al primo avvio)
+Si chiama esattamente default, ha sempre 7 giorni:
+Upper, Lower, Rest, Upper, Lower, Rest, Rest.
+Ogni giorno di allenamento ha 4–5 esercizi presi dal catalogo; le ripetizioni target sono il
+punto medio dell'intervallo tipico dell'esercizio (es. 3x8, 3x10, 4x12).
+Ogni giorno è creato con sets serie, tutte vuote (nessun peso precompilato).
+5.2 Registrazione dell'allenamento (una riga per serie)
+Ogni esercizio mostra una riga per serie (es. 3x10 → 3 righe), con due campi:
+peso (kg) e ripetizioni, entrambi vuoti all'inizio con placeholder kg e rip.
+I valori si salvano mentre si digita (non serve un pulsante salva).
+Sopra le righe resta visibile il target (es. 3x10) come riferimento.
+Non copiare i valori dalla serie precedente (scelta esplicita dell'utente).
+Tastierino numerico con tastierino decimale per il peso e CupertinoTextField con
+keyboardType adeguato; pulsante "fatto" sulla tastiera.
+5.3 Completare un giorno
+Il pulsante Finish è abilitato solo se ogni serie del giorno ha peso > 0 e ripetizioni >
+0, e solo sul giorno di oggi (vedi §5.4).
+I giorni di riposo non hanno Finish.
+Premendo Finish: se il giorno non era mai stato completato → completa direttamente; se era
+già stato completato (e l'utente ha modificato i pesi) → chiedi conferma con dialog iOS
+("Hai già completato Day 2. Vuoi salvare i nuovi pesi?" + Conferma/Annulla).
+Dopo il completamento i valori restano modificabili: Finish ricompare e ri-confermare
+chiede conferma. Lo storico non raddoppia (vedi §5.5).
+5.4 Ciclo di 7 giorni ancorato al calendario (regola centrale)
+Il programma è agganciato alle date vere: il Day 1 è il giorno in cui il programma è stato
+attivato (o in cui è ripartito l'ultimo ciclo). Se il Day 1 è lunedì, il Day 2 è martedì,
+anche se il Day 1 era Upper.
+I giorni di riposo "passano" comunque: non si può completare il Day 2 di lunedì né il Day 4
+di mercoledì. Si può completare solo il giorno di oggi (quello con la scritta "Oggi").
+Un giorno di allenamento passato senza essere completato diventa ✗ Saltato (pallino rosso):
+non è recuperabile, resta segnato fino alla fine del ciclo.
+Finito il Day 7 (dopo 7 giorni di calendario, riposi inclusi) il ciclo si azzera da solo:
+tutte le serie fatte vengono copiate nello storico (cycle_history, una riga per serie,
+con pesi e ripetizioni realmente fatti; le serie vuote vanno archiviate con peso 0);
+i campi peso/ripetizioni vengono svuotati (serie di nuovo vuote, Finish bloccato);
+si riparte dal Day 1 con cycle_number + 1;
+compare il dialog "Ciclo completato!" ("Hai finito i 7 giorni: quello che hai fatto è
+stato salvato nello storico e il programma riparte dal Day 1 con i campi vuoti.").
+Il ciclo si azzera anche se i giorni 6 e 7 sono di riposo (devono passare 7 giorni veri).
+Se il ciclo scade mentre l'app è chiusa, l'allineamento e il dialog avvengono all'apertura.
+L'app deve accorgersi da sola del cambio di giornata (es. tornando in foreground o con un
+controllo periodico), senza bisogno di riavviarla.
+5.5 Streak (giorni consecutivi)
+Ogni volta che completi un giorno di allenamento la streak sale di 1
+(massimo +1 al giorno: due completamenti nella stessa data valgono 1).
+
+Hai tempo fino alla fine del giorno successivo + i giorni di riposo consecutivi che seguono
+quel giorno nel programma. Con il programma default:
+
+Giorno completato	Riposi dopo	Scadenza
+Day 1	0	entro il giorno dopo
+Day 2	1 (Day 3)	entro 2 giorni dopo (il riposo congela)
+Day 4	0	entro il giorno dopo
+Day 5	2 (Day 6 e 7)	entro 3 giorni dopo (weekend congelato)
+Nei giorni di riposo dentro la finestra la streak è congelata: non sale e non si azzera.
+
+Se superi la scadenza senza completare il giorno corrente → la streak torna a 0.
+
+Regola aggiuntiva importante: se c'è un giorno di allenamento saltato (✗) con data
+successiva all'ultimo allenamento, la streak è 0 anche se la scadenza non è ancora passata
+(può succedere quando il ciclo riparte o il programma viene attivato a metà settimana).
+In formule: streak = 0 se oggi > scadenza oppure se esiste un giorno fallito con data >
+data dell'ultimo completamento.
+
+Record: il valore massimo mai raggiunto, non si azzera mai.
+
+Cambiare programma non azzera la streak.
+
+Ri-confermare i pesi di un giorno già chiuso non aumenta la streak (è una conferma, non un
+allenamento nuovo).
+
+5.6 Schermate "stile Duolingo" della streak
+Aumento della streak (schermo intero, si apre da sola subito dopo il completamento):
+
+Fiamma grande animata (entra di scatto), numero grande, scritta "giorno di fila" /
+"giorni di fila", pulsante Continua (si chiude anche toccando fuori).
+Versione "epica" (con coriandoli che cadono e una pill dedicata) solo ai
+traguardi: 3, 7, 14, 30, 50, 75, 100, 150, 200, 365 giorni oppure nuovo record personale
+(pill 🏆 NUOVO RECORD, altrimenti 🎉 TRAGUARDO).
+Il primo allenamento in assoluto non è un record (non esisteva un record precedente).
+Le due versioni condividono il layout: differiscono per coriandoli, dimensioni e pill.
+Perdita della streak (schermo intero):
+
+Fiamma spenta (opacità bassa), titolo "Hai perso la streak", il motivo
+("Hai saltato l'allenamento di Day 2." oppure "Hai superato la scadenza senza allenarti."),
+"Era di N giorni · il record resta M", box "Si riparte da 0" con spiegazione, pulsante OK.
+Si chiude solo con OK (non toccando fuori).
+Compare una volta sola per perdita (flag in settings, es. streak_lost_notified): se
+l'utente riapre l'app il giorno dopo non deve rivederla. Si riattiva appena la streak torna > 0.
+Se la streak si perde a app chiusa, la schermata compare all'apertura.
+5.7 Programmi
+Oltre al default, l'utente può creare, modificare, eliminare programmi.
+Un programma ha sempre 7 giorni; per ogni giorno si sceglie Training o Rest; per i giorni
+di allenamento si scelgono gli esercizi dal catalogo (raggruppati per muscolo) con
+serie × ripetizioni, oppure inserimento manuale.
+Dopo il salvataggio il nuovo programma diventa attivo e il suo ciclo parte dal giorno
+dell'attivazione.
+"Nuovo programma" è un creatore da zero, non una copia del default.
+L'eliminazione chiede conferma e non può lasciare l'app senza programmi.
+6. Schermate
+Workout (tab 1): header con Program: <nome>, riga viola Ciclo N · giorno X di 7,
+titolo "Workout" e badge streak compatto in alto a destra (🔥 N · record M, arancione se
+N > 0, grigio se 0). Sotto: riga "Current Program" + "+ New Program" che apre lo sheet dei
+programmi. Poi la lista dei 7 giorni: ogni card mostra Day 1 · Upper, N es. ›, e
+(se è quello di oggi) "Oggi" con l'elenco espanso delle serie; stati possibili ✓ Completato,
+✗ Saltato (rosso), Oggi. Pulsante Finish in fondo al giorno di oggi.
+Analytics (tab 2, 📊): vedi §7.
+Profile (tab 3, 👤): informazioni/minimal (nessun login): nome facoltativo, preferenze
+(tema, unità kg/lb), e link/info. Niente dati cloud.
+Programmi (sheet modale) ed Editor programma (schermata a pieno schermo, si chiude
+tornando indietro come una pagina iOS).
+Celebrazioni streak (overlay a schermo intero, §5.6).
+7. Analytics (tab 2)
+Blocchi richiesti, in ordine, in una pagina scrollabile:
+
+3 card di riepilogo: streak/record; volume dell'ultimo ciclo con Δ% sul precedente;
+aderenza dell'ultimo ciclo ("4/5 giorni").
+Volume per ciclo: grafico a barre (una barra per ciclo, evidenzia l'ultimo).
+Progressione per esercizio: menu a tendina per scegliere l'esercizio → grafico del suo
+andamento nel tempo + riga PR + Δ% rispetto al ciclo precedente.
+Metrica selezionabile con un selettore segmentato iOS: Volume (kg × ripetizioni) /
+Peso massimo / 1RM stimato (Epley: peso × (1 + ripetizioni / 30)).
+I tuoi record: lista dei PR per esercizio (miglior peso, 1RM stimato, ciclo e data).
+Gruppi muscolari: distribuzione del volume per gruppo nell'ultimo ciclo (usa
+exercise_catalog.group_name).
+Requisiti:
+
+Includi anche il ciclo in corso nei grafici (dati parziali, marcato come "in corso"), così
+la schermata non è vuota al primo avvio.
+Grafici disegnati a mano con CustomPainter (barre, linee, assi, etichette): nessuna
+dipendenza esterna di charting. Animazioni di entrata morbide.
+Le serie con peso 0 (non fatte) vanno escluse dai calcoli.
+Stato vuoto elegante: se non c'è ancora nessun dato mostra un messaggio con illustrazione
+minimale ("Completa il tuo primo allenamento per vedere le statistiche").
+8. Dati e casi limite da gestire
+Primo avvio: crea il programma default, il catalogo e imposta il ciclo a oggi.
+Giorni di riposo: nessun Finish, la streak congela, passano col calendario.
+Giorno fallito: non si può completare nemmeno compilando tutte le serie.
+Cambio di programma: la streak continua, il ciclo riparte dal giorno dell'attivazione.
+App aperta dopo molti giorni: allinea il ciclo, archivia i cicli chiusi (anche più di uno),
+segna i giorni saltati, aggiorna la streak, mostra gli eventuali dialog.
+Orario: nessuna logica basata sull'ora, solo date di calendario (fuso locale).
+9. Test obbligatori (unit, sulle regole pure)
+Copri almeno questi scenari, con date simulate (la logica non deve usare DateTime.now()
+direttamente, ma un'astrazione iniettabile):
+
+Settimana perfetta: Day 1 … Day 5 completati nei giorni giusti → streak 5, nessun giorno
+fallito; il weekend è congelato; al settimo giorno il ciclo si azzera e riparte da Day 1 con i
+campi vuoti e cycle_history popolato.
+Giorno saltato: completo il Day 1, salto il Day 2 → il Day 2 diventa fallito, non è
+completabile nemmeno compilando tutto, e la streak va a 0; allenandomi il giorno giusto dopo
+riparte da 1.
+Scadenza valida ma giorno saltato (caso limite): storico con scadenza futura + un giorno
+fallito → la streak deve comunque essere 0; dopo un allenamento valido riparte da 1.
+Due completamenti nella stessa data → la streak sale di 1 solo.
+Ri-conferma dei pesi di un giorno già chiuso → la streak non cambia.
+Cambio programma → la streak continua con lo stesso valore.
+Archiviazione: al reset del ciclo, tutte le serie con i pesi finiscono in cycle_history e i
+campi del nuovo ciclo sono vuoti.
+Streak persa: l'avviso viene mostrato una volta sola e torna disponibile dopo una nuova
+streak.
+Aggiungi widget test per: card del giorno (stati completato/saltato/oggi), riga serie (Finish
+bloccato finché manca un campo), schermata di celebrazione (versione semplice vs epica).
+
+10. Criteri di accettazione
+ flutter analyze senza errori né warning.
+ flutter test verde con i casi del §9.
+ L'app gira su simulatore iOS (iPhone 16 Pro e iPhone SE) senza errori in console.
+ Ciclo, streak, giorni falliti e storico si comportano esattamente come in §5.
+ Nessuna dipendenza da Material nell'UI (eccetto dove inevitabile, da dichiarare).
+ Tema scuro + light, Dynamic Type fino al 200% senza layout rotti, safe area corretta.
+ Haptic feedback e animazioni presenti ma sobrie (nessuna animazione > 600 ms).
+ README con: architettura scelta, struttura cartelle, schema DB, come eseguire
+(flutter pub get, flutter run), come lanciare i test, e la lista delle regole
+implementate (così si può confrontare con l'app originale).
+11. Cosa NON fare
+Niente login/sincronizzazione/backend/firebase.
+Niente advertising, analytics SDK o tracking.
+Niente widget Material in UI (niente AppBar, FloatingActionButton, SnackBar, Card).
+Niente "lo implementiamo dopo": se una regola del §5 manca, l'app è incompleta.
+Niente schermate inventate oltre a quelle del §6–§7 (se vuoi proporre extra, mettili in una
+sezione "Idee future" nel README, non nel codice).
+Output atteso: il progetto Flutter completo e funzionante, con README, test verdi e la
+checklist del §10 compilata (indicando per ogni punto se è stato fatto e dove).
+Se qualcosa nel prompt è ambiguo, scegli l'opzione più coerente con iOS e segnala la scelta
+nel README, senza fermarti a chiedere.

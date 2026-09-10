@@ -1,0 +1,42 @@
+import React, { useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Feather } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useColors } from '@/hooks/useColors';
+import { createProgram, DayType, Exercise, exerciseCatalog } from '@/domain/workout';
+import { useWorkout } from '@/context/WorkoutContext';
+import { PrimaryButton, SecondaryButton } from '@/components/WorkoutUI';
+
+export default function ProgramsScreen() {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const workout = useWorkout();
+  const [name, setName] = useState('');
+  const [types, setTypes] = useState<DayType[]>(['Upper', 'Lower', 'Rest', 'Upper', 'Lower', 'Rest', 'Rest']);
+  const [selected, setSelected] = useState<Record<number, Exercise[]>>({});
+  const [dayIndex, setDayIndex] = useState(0);
+  const groups = useMemo(() => Array.from(new Set(exerciseCatalog.map((exercise) => exercise.group))), []);
+  const toggleType = (index: number) => setTypes((current) => current.map((type, itemIndex) => itemIndex === index ? type === 'Rest' ? 'Upper' : 'Rest' : type));
+  const toggleExercise = (index: number, catalogItem: (typeof exerciseCatalog)[number]) => {
+    const exercise: Exercise = { id: `${index}-${catalogItem.name}`, name: catalogItem.name, group: catalogItem.group, targetSets: catalogItem.sets, targetReps: catalogItem.reps, sets: Array.from({ length: catalogItem.sets }, (_, setIndex) => ({ id: `${index}-${catalogItem.name}-${setIndex}`, weight: '', reps: '' })) };
+    setSelected((current) => { const list = current[index] ?? []; return { ...current, [index]: list.some((item) => item.name === exercise.name) ? list.filter((item) => item.name !== exercise.name) : [...list, exercise] }; });
+  };
+  const save = () => {
+    const program = createProgram(name.trim() || 'Il mio programma', types.map((type, index) => ({ type, exercises: selected[index] ?? [] })), workout.today);
+    workout.createNewProgram(program);
+    router.back();
+  };
+  return <View style={[page.root, { backgroundColor: colors.background }]}><ScrollView contentContainerStyle={[page.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 }]}><View style={page.header}><Pressable onPress={() => router.back()}><Feather name="x" size={24} color={colors.foreground} /></Pressable><Text style={[page.title, { color: colors.foreground }]}>Programmi</Text><View style={{ width: 24 }} /></View>
+    <Text style={[page.subtitle, { color: colors.mutedForeground }]}>Crea un ciclo da 7 giorni. Dopo il salvataggio diventerà il tuo programma attivo.</Text>
+    <View style={[page.existing, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[page.existingIcon, { backgroundColor: colors.accent }]}><Feather name="check" size={18} color={colors.primary} /></View><View style={{ flex: 1 }}><Text style={[page.existingTitle, { color: colors.foreground }]}>{workout.program.name}</Text><Text style={[page.existingMeta, { color: colors.mutedForeground }]}>Programma attivo · ciclo {workout.program.cycleNumber}</Text></View><Text style={[page.active, { color: colors.success }]}>ATTIVO</Text></View>
+    <Text style={[page.label, { color: colors.foreground }]}>Nome programma</Text><TextInput value={name} onChangeText={setName} placeholder="es. Forza e controllo" placeholderTextColor={colors.mutedForeground} style={[page.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]} />
+    <Text style={[page.label, { color: colors.foreground }]}>Struttura settimana</Text>
+    {types.map((type, index) => <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[page.dayIndex, { backgroundColor: colors.muted }]}><Text style={[page.dayIndexText, { color: colors.mutedForeground }]}>{index + 1}</Text></View><View style={{ flex: 1 }}><Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text><Text style={[page.dayType, { color: colors.mutedForeground }]}>{type === 'Rest' ? 'Riposo' : `${type} · ${(selected[index] ?? []).length} esercizi`}</Text></View><Pressable onPress={() => { if (type !== 'Rest') setDayIndex(index); toggleType(index); }} style={[page.typeButton, { backgroundColor: type === 'Rest' ? colors.muted : colors.accent }]}><Text style={[page.typeButtonText, { color: type === 'Rest' ? colors.mutedForeground : colors.primary }]}>{type === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable></View>)}
+    {types[dayIndex] !== 'Rest' ? <View style={[page.exercisePicker, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={page.pickerHeader}><View><Text style={[page.pickerTitle, { color: colors.foreground }]}>Esercizi · giorno {dayIndex + 1}</Text><Text style={[page.pickerSubtitle, { color: colors.mutedForeground }]}>Scegline almeno uno</Text></View><Pressable onPress={() => setDayIndex((dayIndex + 1) % 7)}><Text style={[page.next, { color: colors.primary }]}>Prossimo</Text></Pressable></View>{groups.map((group) => <View key={group}><Text style={[page.groupTitle, { color: colors.mutedForeground }]}>{group}</Text>{exerciseCatalog.filter((item) => item.group === group).map((item) => { const checked = (selected[dayIndex] ?? []).some((exercise) => exercise.name === item.name); return <Pressable key={item.name} onPress={() => toggleExercise(dayIndex, item)} style={page.exerciseChoice}><View style={[page.checkbox, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : 'transparent' }]}>{checked ? <Feather name="check" size={12} color={colors.primaryForeground} /> : null}</View><Text style={[page.choiceName, { color: colors.foreground }]}>{item.name}</Text><Text style={[page.choiceTarget, { color: colors.mutedForeground }]}>{item.sets}×{item.reps}</Text></Pressable>; })}</View>)}</View> : null}
+    <PrimaryButton label="Salva e attiva programma" icon="check" onPress={save} /><SecondaryButton label="Annulla" onPress={() => router.back()} />
+  </ScrollView></View>;
+}
+
+const page = StyleSheet.create({ root: { flex: 1 }, content: { paddingHorizontal: 18, gap: 12 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }, title: { fontSize: 20, fontWeight: '900' }, subtitle: { fontSize: 14, lineHeight: 20, marginBottom: 8 }, existing: { borderWidth: 1, borderRadius: 16, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }, existingIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, existingTitle: { fontSize: 14, fontWeight: '800' }, existingMeta: { fontSize: 11, marginTop: 3 }, active: { fontSize: 10, fontWeight: '900' }, label: { fontSize: 13, fontWeight: '800', marginTop: 6 }, input: { minHeight: 48, borderWidth: 1, borderRadius: 13, paddingHorizontal: 14, fontSize: 15 }, dayRow: { borderWidth: 1, borderRadius: 15, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }, dayIndex: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, dayIndexText: { fontSize: 12, fontWeight: '900' }, dayName: { fontSize: 13, fontWeight: '800' }, dayType: { fontSize: 11, marginTop: 3 }, typeButton: { paddingHorizontal: 9, paddingVertical: 7, borderRadius: 8 }, typeButtonText: { fontSize: 10, fontWeight: '800' }, exercisePicker: { borderWidth: 1, borderRadius: 18, padding: 14, marginTop: 4, gap: 6 }, pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }, pickerTitle: { fontSize: 15, fontWeight: '900' }, pickerSubtitle: { fontSize: 11, marginTop: 3 }, next: { fontSize: 12, fontWeight: '900' }, groupTitle: { fontSize: 11, fontWeight: '800', marginTop: 10, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.6 }, exerciseChoice: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 9 }, checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' }, choiceName: { flex: 1, fontSize: 13, fontWeight: '700' }, choiceTarget: { fontSize: 11, fontWeight: '700' } });
