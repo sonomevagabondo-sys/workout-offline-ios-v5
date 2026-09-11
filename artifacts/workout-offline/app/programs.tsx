@@ -163,9 +163,9 @@ export default function ProgramsScreen() {
         <PrimaryButton label="Salva e attiva programma" icon="check" onPress={save} />
         <SecondaryButton label="Annulla" onPress={() => router.back()} />
       </ScrollView>
-      <KeyboardToolbar enabled={pending !== null} showArrows={false} doneText="Fine" />
       <Modal visible={pending !== null} transparent animationType="slide" onRequestClose={closeExerciseConfig}>
         <View style={[page.modalBackdrop, { backgroundColor: `${colors.background}CC` }]}>
+          <KeyboardToolbar enabled={pending !== null} showArrows={false} doneText="Fine" />
           <View style={[page.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 18 }]}>
             <View style={page.modalHandle} />
             <View style={page.modalHeader}><View style={{ flex: 1 }}><Text style={[page.modalTitle, { color: colors.foreground }]}>{pending?.custom ? 'Nuovo esercizio custom' : 'Imposta esercizio'}</Text><Text style={[page.modalSubtitle, { color: colors.mutedForeground }]}>Definisci il target prima di aggiungerlo</Text></View><Pressable onPress={closeExerciseConfig}><Feather name="x" size={20} color={colors.mutedForeground} /></Pressable></View>
