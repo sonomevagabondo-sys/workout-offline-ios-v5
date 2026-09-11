@@ -150,7 +150,7 @@ export const createDefaultProgram = (startDate = todayIso()): Program => ({
   days: ['Upper', 'Lower', 'Rest', 'Upper', 'Lower', 'Rest', 'Rest'].map((type, index) => ({
     id: uid('day'),
     order: index + 1,
-    name: type === 'Rest' ? 'Riposo' : type === 'Upper' ? 'Parte superiore' : 'Parte inferiore',
+        name: type === 'Rest' ? 'Riposo' : type,
     type: type as DayType,
     exercises:
       type === 'Upper'
@@ -215,7 +215,7 @@ export const exerciseCatalog = catalog.map(([name, group, sets, reps]) => ({
   reps,
 }));
 
-export const createProgram = (name: string, days: Array<{ type: DayType; exercises: Exercise[] }>, startDate: string): Program => ({
+export const createProgram = (name: string, days: Array<{ type: DayType; name?: string; exercises: Exercise[] }>, startDate: string): Program => ({
   id: uid('program'),
   name,
   cycleStart: startDate,
@@ -223,7 +223,7 @@ export const createProgram = (name: string, days: Array<{ type: DayType; exercis
   days: days.map((day, index) => ({
     id: uid('day'),
     order: index + 1,
-    name: day.type === 'Rest' ? 'Riposo' : day.type === 'Upper' ? 'Parte superiore' : 'Parte inferiore',
+    name: day.type === 'Rest' ? 'Riposo' : day.name?.trim() || 'Allenamento',
     type: day.type,
     exercises: day.exercises,
     completed: false,

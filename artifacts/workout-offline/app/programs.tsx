@@ -23,6 +23,7 @@ export default function ProgramsScreen() {
   const workout = useWorkout();
   const [name, setName] = useState('');
   const [types, setTypes] = useState<DayType[]>(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
+  const [dayNames, setDayNames] = useState<string[]>(Array.from({ length: 7 }, () => ''));
   const [selected, setSelected] = useState<Record<number, Exercise[]>>({});
   const [dayIndex, setDayIndex] = useState(0);
   const [pending, setPending] = useState<PendingExercise | null>(null);
@@ -122,7 +123,7 @@ export default function ProgramsScreen() {
 
   const save = () => {
     if (!types.some((type) => type !== 'Rest')) {
-      Alert.alert('Scegli i giorni di allenamento', 'Imposta almeno un giorno come Upper o Lower prima di salvare il programma.');
+      Alert.alert('Scegli i giorni di allenamento', 'Imposta almeno un giorno come Allenamento prima di salvare il programma.');
       return;
     }
     const missingExercises = types.findIndex((type, index) => type !== 'Rest' && (selected[index] ?? []).length === 0);
@@ -133,7 +134,7 @@ export default function ProgramsScreen() {
     }
     const program = createProgram(
       name.trim() || 'Il mio programma',
-      types.map((type, index) => ({ type, exercises: selected[index] ?? [] })),
+      types.map((type, index) => ({ type, name: dayNames[index], exercises: selected[index] ?? [] })),
       workout.today,
     );
     workout.createNewProgram(program);
@@ -177,11 +178,11 @@ export default function ProgramsScreen() {
         {types.map((type, index) => (
           <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border }]}>
             <Pressable onPress={() => setDayIndex(index)} style={page.dayIndex}><View style={[page.dayIndexCircle, { backgroundColor: colors.muted }]}><Text style={[page.dayIndexText, { color: colors.mutedForeground }]}>{index + 1}</Text></View></Pressable>
-            <Pressable onPress={() => setDayIndex(index)} style={{ flex: 1 }}><Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text><Text style={[page.dayType, { color: colors.mutedForeground }]}>{type === 'Rest' ? 'Riposo' : `${type} · ${(selected[index] ?? []).length} esercizi`}</Text></Pressable>
-             <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
-               {(['Upper', 'Lower', 'Rest'] as DayType[]).map((option) => {
+             <View style={{ flex: 1 }}><Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text>{type === 'Rest' ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>Riposo</Text> : <TextInput value={dayNames[index]} onChangeText={(value) => setDayNames((current) => current.map((currentName, nameIndex) => nameIndex === index ? value : currentName))} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} />}<Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{type !== 'Rest' ? `${(selected[index] ?? []).length} esercizi` : ''}</Text></View>
+              <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
+                {(['Upper', 'Rest'] as DayType[]).map((option) => {
                  const selectedType = type === option;
-                 return <Pressable key={option} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : option}</Text></Pressable>;
+                  return <Pressable key={option} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable>;
                })}
              </View>
           </View>
@@ -244,6 +245,8 @@ const page = StyleSheet.create({
   dayIndexText: { fontSize: 12, fontWeight: '900' },
   dayName: { fontSize: 13, fontWeight: '800' },
   dayType: { fontSize: 11, marginTop: 3 },
+  dayNameInput: { minHeight: 26, paddingVertical: 0, paddingHorizontal: 0, borderBottomWidth: 1, fontSize: 11, marginTop: 2 },
+  dayExerciseCount: { fontSize: 10, marginTop: 3 },
   typeOptions: { flexDirection: 'row', alignItems: 'center', borderRadius: 9, padding: 2, gap: 1 },
   typeOption: { paddingHorizontal: 5, paddingVertical: 7, borderRadius: 7 },
   typeButtonText: { fontSize: 10, fontWeight: '800' },

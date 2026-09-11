@@ -210,7 +210,7 @@ export default function AnalyticsScreen() {
                         <View key={dayKey} style={[page.detailDay, { borderTopColor: colors.border }]}>
                           <Pressable onPress={() => setExpandedDay(dayOpen ? null : dayKey)} style={page.detailDayHeader}>
                             <View style={{ flex: 1 }}>
-                              <Text style={[page.detailDayTitle, { color: colors.foreground }]}>Giorno {day.order} · {day.type === 'Rest' ? 'Riposo' : day.type}</Text>
+                              <Text style={[page.detailDayTitle, { color: colors.foreground }]}>Giorno {day.order} · {day.type === 'Rest' ? 'Riposo' : day.name}</Text>
                               <Text style={[page.detailDayMeta, { color: colors.mutedForeground }]}>
                                 {day.type === 'Rest' ? 'Nessuna serie' : `${exerciseNames.length} esercizi · ${day.sets.length} serie`}
                               </Text>
