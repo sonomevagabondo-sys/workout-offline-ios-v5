@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { KeyboardToolbar } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { createProgram, DayType, Exercise, exerciseCatalog } from '@/domain/workout';
@@ -162,6 +163,7 @@ export default function ProgramsScreen() {
         <PrimaryButton label="Salva e attiva programma" icon="check" onPress={save} />
         <SecondaryButton label="Annulla" onPress={() => router.back()} />
       </ScrollView>
+      <KeyboardToolbar enabled={pending !== null} showArrows={false} doneText="Fine" />
       <Modal visible={pending !== null} transparent animationType="slide" onRequestClose={closeExerciseConfig}>
         <View style={[page.modalBackdrop, { backgroundColor: `${colors.background}CC` }]}>
           <View style={[page.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 18 }]}>
