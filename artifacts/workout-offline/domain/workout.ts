@@ -10,6 +10,7 @@ export type Exercise = {
   id: string;
   name: string;
   group: string;
+  custom?: boolean;
   targetSets: number;
   targetReps: number;
   sets: WorkoutSet[];

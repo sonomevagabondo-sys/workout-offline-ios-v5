@@ -33,6 +33,7 @@ type WorkoutContextValue = WorkoutState & {
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   dismissStreakLost: () => void;
   switchProgram: (programId: string) => void;
+  deleteProgram: (programId: string) => void;
 };
 
 const STORAGE_KEY = 'workout-offline-state-v1';
@@ -243,6 +244,31 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const deleteProgram = (programId: string) => {
+    setState((current) => {
+      if (current.programs.length <= 1) return current;
+      const remaining = current.programs.filter((program) => program.id !== programId);
+      const deletedActive = current.activeProgramId === programId;
+      if (!deletedActive) {
+        return {
+          ...current,
+          programs: remaining,
+          logs: current.logs.filter((log) => log.programId !== programId),
+          history: current.history.filter((cycle) => cycle.programId !== programId),
+        };
+      }
+      const nextProgram = remaining[0];
+      return normalizeState({
+        ...current,
+        program: nextProgram,
+        programs: remaining,
+        activeProgramId: nextProgram.id,
+        logs: current.logs.filter((log) => log.programId !== programId),
+        history: current.history.filter((cycle) => cycle.programId !== programId),
+      }, today);
+    });
+  };
+
   const clearProfile = () => setState((current) => ({ ...current, profileName: '' }));
   const setProfileName = (profileName: string) => setState((current) => ({ ...current, profileName }));
   const setUnit = (unit: 'kg' | 'lb') => setState((current) => ({ ...current, unit }));
@@ -266,6 +292,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
       setTheme,
       dismissStreakLost,
       switchProgram,
+      deleteProgram,
     }),
     [hydrated, state, today],
   );

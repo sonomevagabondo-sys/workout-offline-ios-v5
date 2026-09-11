@@ -22,7 +22,7 @@ export default function ProgramsScreen() {
   const router = useRouter();
   const workout = useWorkout();
   const [name, setName] = useState('');
-  const [types, setTypes] = useState<DayType[]>(['Upper', 'Lower', 'Rest', 'Upper', 'Lower', 'Rest', 'Rest']);
+  const [types, setTypes] = useState<DayType[]>(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
   const [selected, setSelected] = useState<Record<number, Exercise[]>>({});
   const [dayIndex, setDayIndex] = useState(0);
   const [pending, setPending] = useState<PendingExercise | null>(null);
@@ -30,12 +30,11 @@ export default function ProgramsScreen() {
   const [targetSets, setTargetSets] = useState('');
   const [targetReps, setTargetReps] = useState('');
   const groups = useMemo(() => Array.from(new Set(exerciseCatalog.map((exercise) => exercise.group))), []);
+  const [customGroup, setCustomGroup] = useState(groups[0] ?? 'Petto');
   const currentExercises = selected[dayIndex] ?? [];
 
-  const toggleType = (index: number) => {
-    setTypes((current) =>
-      current.map((type, itemIndex) => (itemIndex === index ? (type === 'Rest' ? 'Upper' : 'Rest') : type)),
-    );
+  const setDayType = (index: number, type: DayType) => {
+    setTypes((current) => current.map((item, itemIndex) => (itemIndex === index ? type : item)));
   };
 
   const openExerciseConfig = (item: PendingExercise) => {
@@ -43,6 +42,7 @@ export default function ProgramsScreen() {
     setExerciseName(item.name);
     setTargetSets(item.defaultSets);
     setTargetReps(item.defaultReps);
+    setCustomGroup(item.custom && item.group !== 'Custom' ? item.group : groups[0] ?? 'Petto');
   };
 
   const openCatalogConfig = (item: (typeof exerciseCatalog)[number]) => {
@@ -70,6 +70,7 @@ export default function ProgramsScreen() {
     setExerciseName('');
     setTargetSets('');
     setTargetReps('');
+    setCustomGroup(groups[0] ?? 'Petto');
   };
 
   const saveExercise = () => {
@@ -83,7 +84,8 @@ export default function ProgramsScreen() {
     const exercise: Exercise = {
       id: `${dayIndex}-${cleanName}-${Date.now()}`,
       name: cleanName,
-      group: pending?.group ?? 'Custom',
+      group: pending?.custom ? customGroup : pending?.group ?? 'Custom',
+      custom: pending?.custom ?? false,
       targetSets: sets,
       targetReps: reps,
       sets: Array.from({ length: sets }, (_, setIndex) => ({
@@ -114,11 +116,15 @@ export default function ProgramsScreen() {
       group: exercise.group,
       defaultSets: String(exercise.targetSets),
       defaultReps: String(exercise.targetReps),
-      custom: exercise.group === 'Custom',
+      custom: exercise.custom ?? exercise.group === 'Custom',
     });
   };
 
   const save = () => {
+    if (!types.some((type) => type !== 'Rest')) {
+      Alert.alert('Scegli i giorni di allenamento', 'Imposta almeno un giorno come Upper o Lower prima di salvare il programma.');
+      return;
+    }
     const missingExercises = types.findIndex((type, index) => type !== 'Rest' && (selected[index] ?? []).length === 0);
     if (missingExercises >= 0) {
       setDayIndex(missingExercises);
@@ -145,11 +151,23 @@ export default function ProgramsScreen() {
              const active = program.id === workout.activeProgramId;
              const trainingDays = program.days.filter((day) => day.type !== 'Rest').length;
              const exerciseCount = program.days.reduce((total, day) => total + day.exercises.length, 0);
-             return <Pressable key={program.id} onPress={() => { if (!active) workout.switchProgram(program.id); router.back(); }} style={({ pressed }) => [page.programRow, { borderBottomColor: colors.border, opacity: pressed ? 0.72 : 1 }]}>
-               <View style={[page.programIcon, { backgroundColor: active ? colors.accent : colors.muted }]}><Feather name={active ? 'check' : 'layers'} size={16} color={active ? colors.primary : colors.mutedForeground} /></View>
-               <View style={{ flex: 1 }}><Text style={[page.programRowName, { color: colors.foreground }]}>{program.name}</Text><Text style={[page.programRowMeta, { color: colors.mutedForeground }]}>{trainingDays} giorni · {exerciseCount} esercizi · ciclo {program.cycleNumber}</Text></View>
-               <Text style={[page.programStatus, { color: active ? colors.success : colors.primary }]}>{active ? 'ATTIVO' : 'ATTIVA'}</Text>
-             </Pressable>;
+             return <View key={program.id} style={[page.programRow, { borderBottomColor: colors.border }]}>
+               <Pressable onPress={() => { if (!active) workout.switchProgram(program.id); router.back(); }} style={({ pressed }) => [page.programMain, { opacity: pressed ? 0.72 : 1 }]}>
+                 <View style={[page.programIcon, { backgroundColor: active ? colors.accent : colors.muted }]}><Feather name={active ? 'check' : 'layers'} size={16} color={active ? colors.primary : colors.mutedForeground} /></View>
+                 <View style={{ flex: 1 }}><Text style={[page.programRowName, { color: colors.foreground }]}>{program.name}</Text><Text style={[page.programRowMeta, { color: colors.mutedForeground }]}>{trainingDays} giorni · {exerciseCount} esercizi · ciclo {program.cycleNumber}</Text></View>
+                 <Text style={[page.programStatus, { color: active ? colors.success : colors.primary }]}>{active ? 'ATTIVO' : 'ATTIVA'}</Text>
+               </Pressable>
+               <Pressable onPress={() => {
+                 if (workout.programs.length <= 1) {
+                   Alert.alert('Programma necessario', 'Mantieni almeno un programma salvato.');
+                   return;
+                 }
+                 Alert.alert('Eliminare programma?', `Il programma "${program.name}" e il suo storico verranno eliminati.`, [
+                   { text: 'Annulla', style: 'cancel' },
+                   { text: 'Elimina', style: 'destructive', onPress: () => { workout.deleteProgram(program.id); if (active) router.back(); } },
+                 ]);
+               }} hitSlop={8} style={page.deleteProgramButton}><Feather name="trash-2" size={16} color={workout.programs.length <= 1 ? colors.mutedForeground : colors.destructive} /></Pressable>
+             </View>;
            })}
          </View>
          <Text style={[page.sectionLabel, { color: colors.foreground }]}>Crea un nuovo programma</Text>
@@ -160,7 +178,12 @@ export default function ProgramsScreen() {
           <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border }]}>
             <Pressable onPress={() => setDayIndex(index)} style={page.dayIndex}><View style={[page.dayIndexCircle, { backgroundColor: colors.muted }]}><Text style={[page.dayIndexText, { color: colors.mutedForeground }]}>{index + 1}</Text></View></Pressable>
             <Pressable onPress={() => setDayIndex(index)} style={{ flex: 1 }}><Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text><Text style={[page.dayType, { color: colors.mutedForeground }]}>{type === 'Rest' ? 'Riposo' : `${type} · ${(selected[index] ?? []).length} esercizi`}</Text></Pressable>
-            <Pressable onPress={() => { setDayIndex(index); toggleType(index); }} style={[page.typeButton, { backgroundColor: type === 'Rest' ? colors.muted : colors.accent }]}><Text style={[page.typeButtonText, { color: type === 'Rest' ? colors.mutedForeground : colors.primary }]}>{type === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable>
+             <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
+               {(['Upper', 'Lower', 'Rest'] as DayType[]).map((option) => {
+                 const selectedType = type === option;
+                 return <Pressable key={option} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : option}</Text></Pressable>;
+               })}
+             </View>
           </View>
         ))}
         {types[dayIndex] !== 'Rest' ? (
@@ -182,6 +205,7 @@ export default function ProgramsScreen() {
             <View style={page.modalHeader}><View style={{ flex: 1 }}><Text style={[page.modalTitle, { color: colors.foreground }]}>{pending?.custom ? 'Nuovo esercizio custom' : 'Imposta esercizio'}</Text><Text style={[page.modalSubtitle, { color: colors.mutedForeground }]}>Definisci il target prima di aggiungerlo</Text></View><Pressable onPress={closeExerciseConfig}><Feather name="x" size={20} color={colors.mutedForeground} /></Pressable></View>
             <Text style={[page.modalLabel, { color: colors.foreground }]}>Nome esercizio</Text>
             <TextInput value={exerciseName} onChangeText={setExerciseName} editable={pending?.custom ?? false} placeholder="es. Affondi bulgari" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border, opacity: pending?.custom ? 1 : 0.7 }]} />
+             {pending?.custom ? <View><Text style={[page.modalLabel, { color: colors.foreground }]}>Gruppo muscolare</Text><View style={page.groupOptions}>{groups.map((group) => <Pressable key={group} onPress={() => setCustomGroup(group)} style={[page.groupOption, { backgroundColor: customGroup === group ? colors.accent : colors.surface2, borderColor: customGroup === group ? colors.primary : colors.border }]}><Text style={[page.groupOptionText, { color: customGroup === group ? colors.primary : colors.mutedForeground }]}>{group}</Text></Pressable>)}</View></View> : null}
             <View style={page.targetRow}><View style={{ flex: 1 }}><Text style={[page.modalLabel, { color: colors.foreground }]}>Numero di set</Text><TextInput value={targetSets} onChangeText={setTargetSets} keyboardType="number-pad" returnKeyType="done" placeholder="3" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border }]} /></View><View style={{ flex: 1 }}><Text style={[page.modalLabel, { color: colors.foreground }]}>Ripetizioni target</Text><TextInput value={targetReps} onChangeText={setTargetReps} keyboardType="number-pad" returnKeyType="done" placeholder="10" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border }]} /></View></View>
             <PrimaryButton label="Aggiungi esercizio" icon="plus" onPress={saveExercise} />
             <SecondaryButton label="Annulla" onPress={closeExerciseConfig} />
@@ -204,7 +228,9 @@ const page = StyleSheet.create({
   existingMeta: { fontSize: 11, marginTop: 3 },
   active: { fontSize: 10, fontWeight: '900' },
   programList: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
-  programRow: { minHeight: 68, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1 },
+  programRow: { minHeight: 68, paddingLeft: 12, paddingRight: 10, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1 },
+  programMain: { flex: 1, minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  deleteProgramButton: { padding: 8, marginLeft: 4 },
   programIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   programRowName: { fontSize: 14, fontWeight: '800' },
   programRowMeta: { fontSize: 11, marginTop: 4 },
@@ -218,7 +244,8 @@ const page = StyleSheet.create({
   dayIndexText: { fontSize: 12, fontWeight: '900' },
   dayName: { fontSize: 13, fontWeight: '800' },
   dayType: { fontSize: 11, marginTop: 3 },
-  typeButton: { paddingHorizontal: 9, paddingVertical: 7, borderRadius: 8 },
+  typeOptions: { flexDirection: 'row', alignItems: 'center', borderRadius: 9, padding: 2, gap: 1 },
+  typeOption: { paddingHorizontal: 5, paddingVertical: 7, borderRadius: 7 },
   typeButtonText: { fontSize: 10, fontWeight: '800' },
   exercisePicker: { borderWidth: 1, borderRadius: 18, padding: 14, marginTop: 4, gap: 6 },
   pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
@@ -246,4 +273,7 @@ const page = StyleSheet.create({
   modalLabel: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   modalInput: { minHeight: 46, borderWidth: 1, borderRadius: 12, paddingHorizontal: 13, fontSize: 15 },
   targetRow: { flexDirection: 'row', gap: 10 },
+  groupOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 5 },
+  groupOption: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
+  groupOptionText: { fontSize: 11, fontWeight: '800' },
 });

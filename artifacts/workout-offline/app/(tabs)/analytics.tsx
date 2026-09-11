@@ -58,6 +58,20 @@ export default function AnalyticsScreen() {
         }, {}),
     [workout.program.days],
   );
+  const muscleStats = useMemo(() => {
+    const stats = new Map<string, { volume: number; exercises: number }>();
+    workout.program.days.forEach((day) => {
+      day.exercises.forEach((exercise) => {
+        const current = stats.get(exercise.group) ?? { volume: 0, exercises: 0 };
+        current.exercises += 1;
+        current.volume += exercise.sets.reduce((total, set) => total + Number(set.weight || 0) * Number(set.reps || 0), 0);
+        stats.set(exercise.group, current);
+      });
+    });
+    return Array.from(stats.entries())
+      .map(([group, values]) => ({ group, ...values }))
+      .sort((a, b) => b.volume - a.volume || b.exercises - a.exercises);
+  }, [workout.program.days]);
 
   return (
     <View style={[page.root, { backgroundColor: colors.background }]}>
@@ -248,12 +262,15 @@ export default function AnalyticsScreen() {
 
         <SectionTitle title="Gruppi muscolari" />
         <View style={[page.muscleCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          {['Petto', 'Schiena', 'Gambe', 'Spalle'].map((group, index) => (
-            <View key={group} style={page.muscleRow}>
-              <View style={{ flex: 1 }}><Text style={[page.muscleName, { color: colors.foreground }]}>{group}</Text><View style={[page.muscleTrack, { backgroundColor: colors.muted }]}><View style={[page.muscleFill, { backgroundColor: [colors.primary, colors.orange, colors.success, colors.accentForeground][index], width: `${[78, 62, 52, 34][index]}%` }]} /></View></View>
-              <Text style={[page.muscleValue, { color: colors.mutedForeground }]}>{[78, 62, 52, 34][index]}%</Text>
-            </View>
-          ))}
+          {muscleStats.length === 0 ? <Text style={[page.muscleEmpty, { color: colors.mutedForeground }]}>Aggiungi esercizi al programma per vedere i gruppi muscolari.</Text> : muscleStats.map((item, index) => {
+            const totalVolume = muscleStats.reduce((total, stat) => total + stat.volume, 0);
+            const totalExercises = muscleStats.reduce((total, stat) => total + stat.exercises, 0);
+            const percentage = totalVolume > 0 ? Math.round((item.volume / totalVolume) * 100) : Math.round((item.exercises / totalExercises) * 100);
+            return <View key={item.group} style={page.muscleRow}>
+              <View style={{ flex: 1 }}><Text style={[page.muscleName, { color: colors.foreground }]}>{item.group}</Text><View style={[page.muscleTrack, { backgroundColor: colors.muted }]}><View style={[page.muscleFill, { backgroundColor: [colors.primary, colors.orange, colors.success, colors.accentForeground][index % 4], width: `${Math.max(percentage, 4)}%` }]} /></View></View>
+              <Text style={[page.muscleValue, { color: colors.mutedForeground }]}>{percentage}%</Text>
+            </View>;
+          })}
         </View>
       </ScrollView>
     </View>
@@ -328,4 +345,5 @@ const page = StyleSheet.create({
   muscleTrack: { height: 7, borderRadius: 7, overflow: 'hidden' },
   muscleFill: { height: 7, borderRadius: 7 },
   muscleValue: { fontSize: 12, fontWeight: '800', width: 35, textAlign: 'right' },
+  muscleEmpty: { fontSize: 12, lineHeight: 18 },
 });
