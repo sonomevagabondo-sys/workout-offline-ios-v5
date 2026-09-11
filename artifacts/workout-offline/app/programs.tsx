@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import { KeyboardToolbar } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { createProgram, DayType, Exercise, exerciseCatalog } from '@/domain/workout';
@@ -165,13 +164,12 @@ export default function ProgramsScreen() {
       </ScrollView>
       <Modal visible={pending !== null} transparent animationType="slide" onRequestClose={closeExerciseConfig}>
         <View style={[page.modalBackdrop, { backgroundColor: `${colors.background}CC` }]}>
-          <KeyboardToolbar enabled={pending !== null} showArrows={false} doneText="Fine" />
           <View style={[page.modalCard, { backgroundColor: colors.card, borderColor: colors.border, paddingBottom: insets.bottom + 18 }]}>
             <View style={page.modalHandle} />
             <View style={page.modalHeader}><View style={{ flex: 1 }}><Text style={[page.modalTitle, { color: colors.foreground }]}>{pending?.custom ? 'Nuovo esercizio custom' : 'Imposta esercizio'}</Text><Text style={[page.modalSubtitle, { color: colors.mutedForeground }]}>Definisci il target prima di aggiungerlo</Text></View><Pressable onPress={closeExerciseConfig}><Feather name="x" size={20} color={colors.mutedForeground} /></Pressable></View>
             <Text style={[page.modalLabel, { color: colors.foreground }]}>Nome esercizio</Text>
             <TextInput value={exerciseName} onChangeText={setExerciseName} editable={pending?.custom ?? false} placeholder="es. Affondi bulgari" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border, opacity: pending?.custom ? 1 : 0.7 }]} />
-            <View style={page.targetRow}><View style={{ flex: 1 }}><Text style={[page.modalLabel, { color: colors.foreground }]}>Numero di set</Text><TextInput value={targetSets} onChangeText={setTargetSets} keyboardType="number-pad" placeholder="3" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border }]} /></View><View style={{ flex: 1 }}><Text style={[page.modalLabel, { color: colors.foreground }]}>Ripetizioni target</Text><TextInput value={targetReps} onChangeText={setTargetReps} keyboardType="number-pad" placeholder="10" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border }]} /></View></View>
+            <View style={page.targetRow}><View style={{ flex: 1 }}><Text style={[page.modalLabel, { color: colors.foreground }]}>Numero di set</Text><TextInput value={targetSets} onChangeText={setTargetSets} keyboardType="number-pad" returnKeyType="done" placeholder="3" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border }]} /></View><View style={{ flex: 1 }}><Text style={[page.modalLabel, { color: colors.foreground }]}>Ripetizioni target</Text><TextInput value={targetReps} onChangeText={setTargetReps} keyboardType="number-pad" returnKeyType="done" placeholder="10" placeholderTextColor={colors.mutedForeground} style={[page.modalInput, { color: colors.foreground, backgroundColor: colors.surface2, borderColor: colors.border }]} /></View></View>
             <PrimaryButton label="Aggiungi esercizio" icon="plus" onPress={saveExercise} />
             <SecondaryButton label="Annulla" onPress={closeExerciseConfig} />
           </View>
