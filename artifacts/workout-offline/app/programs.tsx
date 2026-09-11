@@ -139,7 +139,20 @@ export default function ProgramsScreen() {
       <ScrollView contentContainerStyle={[page.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 }]} keyboardShouldPersistTaps="handled">
         <View style={page.header}><Pressable onPress={() => router.back()}><Feather name="x" size={24} color={colors.foreground} /></Pressable><Text style={[page.title, { color: colors.foreground }]}>Programmi</Text><View style={{ width: 24 }} /></View>
         <Text style={[page.subtitle, { color: colors.mutedForeground }]}>Crea un ciclo da 7 giorni. Per ogni esercizio scegli quanti set e quante ripetizioni target vuoi fare.</Text>
-        <View style={[page.existing, { backgroundColor: colors.card, borderColor: colors.border }]}><View style={[page.existingIcon, { backgroundColor: colors.accent }]}><Feather name="check" size={18} color={colors.primary} /></View><View style={{ flex: 1 }}><Text style={[page.existingTitle, { color: colors.foreground }]}>{workout.program.name}</Text><Text style={[page.existingMeta, { color: colors.mutedForeground }]}>Programma attivo · ciclo {workout.program.cycleNumber}</Text></View><Text style={[page.active, { color: colors.success }]}>ATTIVO</Text></View>
+         <Text style={[page.label, { color: colors.foreground }]}>Programmi salvati</Text>
+         <View style={[page.programList, { backgroundColor: colors.card, borderColor: colors.border }]}>
+           {workout.programs.map((program) => {
+             const active = program.id === workout.activeProgramId;
+             const trainingDays = program.days.filter((day) => day.type !== 'Rest').length;
+             const exerciseCount = program.days.reduce((total, day) => total + day.exercises.length, 0);
+             return <Pressable key={program.id} onPress={() => { if (!active) workout.switchProgram(program.id); router.back(); }} style={({ pressed }) => [page.programRow, { borderBottomColor: colors.border, opacity: pressed ? 0.72 : 1 }]}>
+               <View style={[page.programIcon, { backgroundColor: active ? colors.accent : colors.muted }]}><Feather name={active ? 'check' : 'layers'} size={16} color={active ? colors.primary : colors.mutedForeground} /></View>
+               <View style={{ flex: 1 }}><Text style={[page.programRowName, { color: colors.foreground }]}>{program.name}</Text><Text style={[page.programRowMeta, { color: colors.mutedForeground }]}>{trainingDays} giorni · {exerciseCount} esercizi · ciclo {program.cycleNumber}</Text></View>
+               <Text style={[page.programStatus, { color: active ? colors.success : colors.primary }]}>{active ? 'ATTIVO' : 'ATTIVA'}</Text>
+             </Pressable>;
+           })}
+         </View>
+         <Text style={[page.sectionLabel, { color: colors.foreground }]}>Crea un nuovo programma</Text>
         <Text style={[page.label, { color: colors.foreground }]}>Nome programma</Text>
         <TextInput value={name} onChangeText={setName} placeholder="es. Forza e controllo" placeholderTextColor={colors.mutedForeground} style={[page.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]} />
         <Text style={[page.label, { color: colors.foreground }]}>Struttura settimana</Text>
@@ -159,7 +172,7 @@ export default function ProgramsScreen() {
             {groups.map((group) => <View key={group}><Text style={[page.catalogGroup, { color: colors.mutedForeground }]}>{group}</Text>{exerciseCatalog.filter((item) => item.group === group).map((item) => { const checked = currentExercises.some((exercise) => exercise.name === item.name); return <Pressable key={item.name} onPress={() => checked ? removeExercise(item.name) : openCatalogConfig(item)} style={page.exerciseChoice}><View style={[page.checkbox, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : 'transparent' }]}>{checked ? <Feather name="check" size={12} color={colors.primaryForeground} /> : null}</View><Text style={[page.choiceName, { color: colors.foreground }]}>{item.name}</Text><Text style={[page.choiceTarget, { color: colors.mutedForeground }]}>{checked ? 'Aggiunto' : `${item.sets}×${item.reps} suggerito`}</Text></Pressable>; })}</View>)}
           </View>
         ) : null}
-        <PrimaryButton label="Salva e attiva programma" icon="check" onPress={save} />
+         <PrimaryButton label="Salva e attiva nuovo programma" icon="check" onPress={save} />
         <SecondaryButton label="Annulla" onPress={() => router.back()} />
       </ScrollView>
       <Modal visible={pending !== null} transparent animationType="slide" onRequestClose={closeExerciseConfig}>
@@ -190,6 +203,13 @@ const page = StyleSheet.create({
   existingTitle: { fontSize: 14, fontWeight: '800' },
   existingMeta: { fontSize: 11, marginTop: 3 },
   active: { fontSize: 10, fontWeight: '900' },
+  programList: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  programRow: { minHeight: 68, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: 1 },
+  programIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  programRowName: { fontSize: 14, fontWeight: '800' },
+  programRowMeta: { fontSize: 11, marginTop: 4 },
+  programStatus: { fontSize: 10, fontWeight: '900' },
+  sectionLabel: { fontSize: 15, fontWeight: '900', marginTop: 8 },
   label: { fontSize: 13, fontWeight: '800', marginTop: 6 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 13, paddingHorizontal: 14, fontSize: 15 },
   dayRow: { borderWidth: 1, borderRadius: 15, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },

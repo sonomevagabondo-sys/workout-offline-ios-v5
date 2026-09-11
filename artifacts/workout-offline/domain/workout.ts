@@ -56,6 +56,7 @@ export type HistorySet = {
 };
 
 export type CycleHistory = {
+  programId?: string;
   cycleNumber: number;
   volume: number;
   completedDays: number;
@@ -66,6 +67,8 @@ export type CycleHistory = {
 
 export type WorkoutState = {
   program: Program;
+  programs: Program[];
+  activeProgramId: string;
   streak: number;
   record: number;
   logs: WorkoutLog[];
@@ -140,7 +143,7 @@ const dayExercises = (groups: string[]): Exercise[] =>
 
 export const createDefaultProgram = (startDate = todayIso()): Program => ({
   id: uid('program'),
-  name: 'default',
+  name: 'Upper & Lower',
   cycleStart: startDate,
   cycleNumber: 1,
   days: ['Upper', 'Lower', 'Rest', 'Upper', 'Lower', 'Rest', 'Rest'].map((type, index) => ({

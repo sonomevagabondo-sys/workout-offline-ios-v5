@@ -32,25 +32,58 @@ type WorkoutContextValue = WorkoutState & {
   setUnit: (unit: 'kg' | 'lb') => void;
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   dismissStreakLost: () => void;
+  switchProgram: (programId: string) => void;
 };
 
 const STORAGE_KEY = 'workout-offline-state-v1';
 const WorkoutContext = createContext<WorkoutContextValue | null>(null);
 
-const initialState = (): WorkoutState => ({
-  program: createDefaultProgram(),
-  streak: 0,
-  record: 0,
-  logs: [],
-  history: [],
-  profileName: '',
-  unit: 'kg',
-  theme: 'dark',
-  streakLostNotice: false,
+const initialState = (): WorkoutState => {
+  const program = createDefaultProgram();
+  return {
+    program,
+    programs: [program],
+    activeProgramId: program.id,
+    streak: 0,
+    record: 0,
+    logs: [],
+    history: [],
+    profileName: '',
+    unit: 'kg',
+    theme: 'dark',
+    streakLostNotice: false,
+  };
+};
+
+type StoredWorkoutState = WorkoutState & {
+  programs?: Program[];
+  activeProgramId?: string;
+};
+
+const replaceProgram = (programs: Program[], program: Program) => {
+  const exists = programs.some((item) => item.id === program.id);
+  return exists ? programs.map((item) => (item.id === program.id ? program : item)) : [...programs, program];
+};
+
+const withActiveProgram = (state: WorkoutState, program: Program): WorkoutState => ({
+  ...state,
+  program,
+  programs: replaceProgram(state.programs, program),
+  activeProgramId: program.id,
 });
 
-const normalizeState = (state: WorkoutState, date: string): WorkoutState => {
-  let next = state;
+const normalizeState = (storedState: StoredWorkoutState, date: string): WorkoutState => {
+  const savedPrograms = storedState.programs?.length ? storedState.programs : [storedState.program];
+  const activeProgram =
+    savedPrograms.find((program) => program.id === storedState.activeProgramId) ??
+    savedPrograms.find((program) => program.id === storedState.program.id) ??
+    storedState.program;
+  let next: WorkoutState = {
+    ...storedState,
+    program: activeProgram,
+    programs: replaceProgram(savedPrograms, activeProgram),
+    activeProgramId: activeProgram.id,
+  };
   let elapsed = daysBetween(next.program.cycleStart, date);
   let resetCount = 0;
   let history = [...next.history];
@@ -60,6 +93,7 @@ const normalizeState = (state: WorkoutState, date: string): WorkoutState => {
     history = [
       ...history,
       {
+        programId: next.program.id,
         cycleNumber: next.program.cycleNumber,
         volume: next.program.days.reduce((total, day) => total + dayVolume(day), 0),
         completedDays,
@@ -68,24 +102,21 @@ const normalizeState = (state: WorkoutState, date: string): WorkoutState => {
         sets: archiveCycleSets(next.program),
       },
     ];
-    next = {
-      ...next,
-      program: {
-        ...next.program,
-        cycleStart: addDays(next.program.cycleStart, 7),
-        cycleNumber: next.program.cycleNumber + 1,
-        days: next.program.days.map((day) => ({
-          ...day,
-          completed: false,
-          skipped: false,
-          completedOn: undefined,
-          exercises: day.exercises.map((exercise) => ({
-            ...exercise,
-            sets: exercise.sets.map((set) => ({ ...set, weight: '', reps: '' })),
-          })),
+    next = withActiveProgram(next, {
+      ...next.program,
+      cycleStart: addDays(next.program.cycleStart, 7),
+      cycleNumber: next.program.cycleNumber + 1,
+      days: next.program.days.map((day) => ({
+        ...day,
+        completed: false,
+        skipped: false,
+        completedOn: undefined,
+        exercises: day.exercises.map((exercise) => ({
+          ...exercise,
+          sets: exercise.sets.map((set) => ({ ...set, weight: '', reps: '' })),
         })),
-      },
-    };
+      })),
+    });
     elapsed = daysBetween(next.program.cycleStart, date);
     resetCount += 1;
   }
@@ -100,10 +131,9 @@ const normalizeState = (state: WorkoutState, date: string): WorkoutState => {
   });
   const hasNewSkip = days.some((day) => day.skipped && !next.program.days.find((old) => old.id === day.id)?.skipped);
   return {
-    ...next,
-    history,
+    ...withActiveProgram(next, { ...next.program, days }),
+    history: history.map((cycle) => ({ ...cycle, programId: cycle.programId ?? next.program.id })),
     streakLostNotice: next.streakLostNotice || hasNewSkip,
-    program: { ...next.program, days },
   };
 };
 
@@ -115,7 +145,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const load = async () => {
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
-      const parsed = saved ? (JSON.parse(saved) as WorkoutState) : initialState();
+      const parsed = saved ? (JSON.parse(saved) as StoredWorkoutState) : initialState();
       setState(normalizeState(parsed, todayIso()));
       setToday(todayIso());
       setHydrated(true);
@@ -146,9 +176,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
     field: keyof Pick<WorkoutSet, 'weight' | 'reps'>,
     value: string,
   ) => {
-    setState((current) => ({
-      ...current,
-      program: {
+    setState((current) => withActiveProgram(current, {
         ...current.program,
         days: current.program.days.map((day) =>
           day.id !== dayId
@@ -165,8 +193,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
                 ),
               },
         ),
-      },
-    }));
+      }));
   };
 
   const finishToday = () => {
@@ -183,23 +210,37 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
       streakAfter: newStreak,
       volume: dayVolume(day),
     };
-    setState((current) => ({
+    setState((current) => withActiveProgram({
       ...current,
       streak: newStreak,
       record: newRecord,
       streakLostNotice: false,
       logs: alreadyLogged ? current.logs : [...current.logs, log],
-      program: {
+    }, {
         ...current.program,
         days: current.program.days.map((item) => (item.id === day.id ? { ...item, completed: true, completedOn: today } : item)),
-      },
-    }));
+      }));
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     return { streak: newStreak, epic: !alreadyLogged && (newStreak > state.record || [3, 7, 14, 30, 50, 75, 100, 150, 200, 365].includes(newStreak)), newRecord: newStreak > state.record && state.record > 0 };
   };
 
   const createNewProgram = (program: Program) => {
-    setState((current) => ({ ...current, program: { ...program, cycleStart: today, cycleNumber: 1 } }));
+    setState((current) => {
+      const nextProgram = { ...program, cycleStart: today, cycleNumber: 1 };
+      return {
+        ...current,
+        program: nextProgram,
+        programs: [...current.programs, nextProgram],
+        activeProgramId: nextProgram.id,
+      };
+    });
+  };
+
+  const switchProgram = (programId: string) => {
+    setState((current) => {
+      const nextProgram = current.programs.find((program) => program.id === programId);
+      return nextProgram ? normalizeState(withActiveProgram(current, nextProgram), today) : current;
+    });
   };
 
   const clearProfile = () => setState((current) => ({ ...current, profileName: '' }));
@@ -211,6 +252,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo(
     () => ({
       ...state,
+      history: state.history.filter((cycle) => cycle.programId === state.program.id),
       hydrated,
       today,
       todayDay: getTodayDay(state.program, today),
@@ -223,6 +265,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
       setUnit,
       setTheme,
       dismissStreakLost,
+      switchProgram,
     }),
     [hydrated, state, today],
   );
