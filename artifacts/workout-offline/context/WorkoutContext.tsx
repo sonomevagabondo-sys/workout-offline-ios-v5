@@ -11,6 +11,7 @@ import {
   getTodayDay,
   isDayReadyToFinish,
   Program,
+  archiveCycleSets,
   todayIso,
   WorkoutDay,
   WorkoutLog,
@@ -64,6 +65,7 @@ const normalizeState = (state: WorkoutState, date: string): WorkoutState => {
         completedDays,
         totalTrainingDays: next.program.days.filter((day) => day.type !== 'Rest').length,
         completedOn: addDays(next.program.cycleStart, 6),
+        sets: archiveCycleSets(next.program),
       },
     ];
     next = {

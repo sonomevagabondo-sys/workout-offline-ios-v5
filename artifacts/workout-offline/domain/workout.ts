@@ -43,12 +43,25 @@ export type WorkoutLog = {
   volume: number;
 };
 
+export type HistorySet = {
+  dayOrder: number;
+  dayName: string;
+  dayType: DayType;
+  exerciseName: string;
+  group: string;
+  setIndex: number;
+  weight: number;
+  reps: number;
+  completedOn: string;
+};
+
 export type CycleHistory = {
   cycleNumber: number;
   volume: number;
   completedDays: number;
   totalTrainingDays: number;
   completedOn: string;
+  sets: HistorySet[];
 };
 
 export type WorkoutState = {
@@ -167,6 +180,23 @@ export const dayVolume = (day: WorkoutDay) =>
       total +
       exercise.sets.reduce((exerciseTotal, set) => exerciseTotal + Number(set.weight || 0) * Number(set.reps || 0), 0),
     0,
+  );
+
+export const archiveCycleSets = (program: Program): HistorySet[] =>
+  program.days.flatMap((day) =>
+    day.exercises.flatMap((exercise) =>
+      exercise.sets.map((set, setIndex) => ({
+        dayOrder: day.order,
+        dayName: day.name,
+        dayType: day.type,
+        exerciseName: exercise.name,
+        group: exercise.group,
+        setIndex,
+        weight: Number(set.weight || 0),
+        reps: Number(set.reps || 0),
+        completedOn: addDays(program.cycleStart, day.order - 1),
+      })),
+    ),
   );
 
 export const isMilestone = (streak: number) =>
