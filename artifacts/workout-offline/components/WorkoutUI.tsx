@@ -8,7 +8,7 @@ export function ScreenHeader({ eyebrow, title, right }: { eyebrow?: string; titl
   return (
     <View style={styles.header}>
       <View style={styles.headerCopy}>
-        {eyebrow ? <Text style={[styles.eyebrow, { color: colors.mutedForeground }]}>{eyebrow.toUpperCase()}</Text> : null}
+        {eyebrow ? <View style={[styles.eyebrowBadge, { backgroundColor: colors.accent }]}><View style={[styles.eyebrowDot, { backgroundColor: colors.primary }]} /><Text style={[styles.eyebrow, { color: colors.accentForeground }]}>{eyebrow.toUpperCase()}</Text></View> : null}
         <Text style={[styles.screenTitle, { color: colors.foreground }]}>{title}</Text>
       </View>
       {right}
@@ -65,24 +65,26 @@ export function EmptyState({ title, description }: { title: string; description:
 }
 
 export const styles = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 20 },
-  headerCopy: { gap: 5 },
-  eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
-  screenTitle: { fontSize: 34, fontWeight: '800', letterSpacing: -1.2 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 22 },
+  headerCopy: { gap: 8 },
+  eyebrowBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 99, paddingHorizontal: 9, paddingVertical: 5 },
+  eyebrowDot: { width: 6, height: 6, borderRadius: 3 },
+  eyebrow: { fontSize: 10, fontWeight: '900', letterSpacing: 1.1 },
+  screenTitle: { fontSize: 36, fontWeight: '900', letterSpacing: -1.6 },
   pill: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 99, alignSelf: 'flex-start' },
   pillText: { fontSize: 12, fontWeight: '700' },
-  primaryButton: { minHeight: 48, paddingHorizontal: 18, borderRadius: 14, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  primaryButton: { minHeight: 52, paddingHorizontal: 18, borderRadius: 17, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { fontSize: 15, fontWeight: '800' },
-  secondaryButton: { minHeight: 44, paddingHorizontal: 16, borderRadius: 13, borderWidth: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
+  secondaryButton: { minHeight: 48, paddingHorizontal: 16, borderRadius: 15, borderWidth: 1, flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { fontSize: 14, fontWeight: '700' },
-  sectionTitle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 26, marginBottom: 12 },
-  sectionTitleText: { fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
-  setRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 9 },
-  setNumber: { width: 25, height: 25, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 30, marginBottom: 13 },
+  sectionTitleText: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  setRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 9 },
+  setNumber: { width: 28, height: 28, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   setNumberText: { fontSize: 12, fontWeight: '800' },
-  setInput: { flex: 1, minHeight: 42, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 15, fontWeight: '700' },
-  emptyState: { borderRadius: 18, borderWidth: 1, padding: 24, alignItems: 'center', marginTop: 12 },
-  emptyIcon: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  setInput: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, paddingHorizontal: 13, fontSize: 15, fontWeight: '700' },
+  emptyState: { borderRadius: 22, borderWidth: 1, padding: 26, alignItems: 'center', marginTop: 12 },
+  emptyIcon: { width: 50, height: 50, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginBottom: 13 },
   emptyTitle: { fontSize: 17, fontWeight: '800', textAlign: 'center' },
   emptyDescription: { fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6 },
 });

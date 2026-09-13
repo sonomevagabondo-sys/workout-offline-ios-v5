@@ -42,8 +42,8 @@ export default function WorkoutScreen() {
     <View style={[page.root, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={[page.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 110 }]} showsVerticalScrollIndicator={false}>
         <ScreenHeader eyebrow={`Programma: ${workout.program.name}`} title="Allenamento" right={<View style={page.streakBadge}><Text style={page.streakIcon}>✦</Text><View><Text style={[page.streakValue, { color: colors.orange }]}>{workout.streak} giorni</Text><Text style={[page.streakRecord, { color: colors.mutedForeground }]}>record {workout.record}</Text></View></View>} />
-        <View style={[page.cycleBanner, { backgroundColor: colors.primary }]}>
-          <View><Text style={page.cycleEyebrow}>CICLO {workout.program.cycleNumber}</Text><Text style={page.cycleTitle}>Giorno {cycleProgress} <Text style={page.cycleSub}>di 7</Text></Text></View>
+         <View style={[page.cycleBanner, { backgroundColor: colors.primary }]}>
+           <View style={page.cycleTop}><View><Text style={page.cycleEyebrow}>CICLO {workout.program.cycleNumber}</Text><Text style={page.cycleTitle}>Giorno {cycleProgress} <Text style={page.cycleSub}>di 7</Text></Text></View><View style={page.cyclePercent}><Text style={page.cyclePercentValue}>{Math.round((cycleProgress / 7) * 100)}%</Text><Text style={page.cyclePercentLabel}>completato</Text></View></View>
           <View style={page.progressTrack}><View style={[page.progressFill, { width: `${(cycleProgress / 7) * 100}%` }]} /></View>
         </View>
         <Pressable onPress={() => router.push('/programs')} style={({ pressed }) => [page.programSwitch, { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.75 : 1 }]}>
@@ -64,10 +64,10 @@ export default function WorkoutScreen() {
                   {isToday ? <Pill tone="purple">OGGI</Pill> : day.completed ? <Pill tone="green">FATTO</Pill> : day.skipped ? <Pill tone="orange">SALTATO</Pill> : null}
                 </Pressable>
                 {isToday && !isRest && expanded ? (
-                  <View style={[page.todayBody, { borderTopColor: colors.border }]}>
+                   <View style={[page.todayBody, { borderTopColor: colors.border, backgroundColor: colors.surface2 }]}>
                     <Text style={[page.todayHint, { color: colors.mutedForeground }]}>Inserisci i tuoi carichi. I dati si salvano mentre scrivi.</Text>
                     {day.exercises.map((exercise) => (
-                      <View key={exercise.id} style={page.exercise}>
+                       <View key={exercise.id} style={[page.exercise, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         <View style={page.exerciseHeader}><View><Text style={[page.exerciseName, { color: colors.foreground }]}>{exercise.name}</Text><Text style={[page.exerciseTarget, { color: colors.primary }]}>{exercise.targetSets} × {exercise.targetReps}</Text></View><Text style={[page.exerciseGroup, { color: colors.mutedForeground }]}>{exercise.group}</Text></View>
                         {exercise.sets.map((set, index) => <SetRow key={set.id} index={index} weight={set.weight} reps={set.reps} unit={workout.unit} onWeightChange={(value) => workout.updateSet(day.id, exercise.id, set.id, 'weight', value)} onRepsChange={(value) => workout.updateSet(day.id, exercise.id, set.id, 'reps', value)} />)}
                       </View>
@@ -80,9 +80,9 @@ export default function WorkoutScreen() {
             );
           })}
         </View>
-        <View style={[page.miniStats, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <View><Text style={[page.miniLabel, { color: colors.mutedForeground }]}>Volume in corso</Text><Text style={[page.miniValue, { color: colors.foreground }]}>{Math.round(workout.program.days.reduce((total, day) => total + dayVolume(day), 0)).toLocaleString('it-IT')} kg</Text></View>
-          <View style={[page.miniDivider, { backgroundColor: colors.border }]} /><View><Text style={[page.miniLabel, { color: colors.mutedForeground }]}>Prossimo obiettivo</Text><Text style={[page.miniValue, { color: colors.orange }]}>{isMilestone(workout.streak + 1) ? `${workout.streak + 1} giorni` : 'Continuità'}</Text></View>
+         <View style={[page.miniStats, { backgroundColor: colors.card, borderColor: colors.border }]}>
+           <View style={page.miniStat}><View style={[page.miniIcon, { backgroundColor: colors.accent }]}><Feather name="activity" size={15} color={colors.primary} /></View><Text style={[page.miniLabel, { color: colors.mutedForeground }]}>Volume in corso</Text><Text style={[page.miniValue, { color: colors.foreground }]}>{Math.round(workout.program.days.reduce((total, day) => total + dayVolume(day), 0)).toLocaleString('it-IT')} kg</Text></View>
+           <View style={[page.miniDivider, { backgroundColor: colors.border }]} /><View style={page.miniStat}><View style={[page.miniIcon, { backgroundColor: `${colors.orange}22` }]}><Feather name="target" size={15} color={colors.orange} /></View><Text style={[page.miniLabel, { color: colors.mutedForeground }]}>Prossimo obiettivo</Text><Text style={[page.miniValue, { color: colors.orange }]}>{isMilestone(workout.streak + 1) ? `${workout.streak + 1} giorni` : 'Continuità'}</Text></View>
         </View>
       </ScrollView>
       {celebration ? <CelebrationModal celebration={celebration} onClose={() => setCelebration(null)} /> : null}
@@ -103,34 +103,40 @@ const page = StyleSheet.create({
   streakIcon: { fontSize: 25, color: '#FF9800' },
   streakValue: { fontSize: 13, fontWeight: '800' },
   streakRecord: { fontSize: 11, marginTop: 2 },
-  cycleBanner: { borderRadius: 18, padding: 18, marginBottom: 12 },
+   cycleBanner: { borderRadius: 24, padding: 19, marginBottom: 13 },
+   cycleTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cycleEyebrow: { color: '#FFFFFFAA', fontSize: 11, letterSpacing: 1.1, fontWeight: '800' },
   cycleTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '800', marginTop: 4 },
   cycleSub: { fontSize: 16, fontWeight: '600', color: '#FFFFFFAA' },
+   cyclePercent: { alignItems: 'flex-end' },
+   cyclePercentValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '900' },
+   cyclePercentLabel: { color: '#FFFFFFAA', fontSize: 10, fontWeight: '700', marginTop: 2 },
   progressTrack: { height: 5, borderRadius: 5, backgroundColor: '#FFFFFF33', marginTop: 16, overflow: 'hidden' },
   progressFill: { height: 5, borderRadius: 5, backgroundColor: '#FFFFFF' },
-  programSwitch: { borderRadius: 16, borderWidth: 1, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10 },
+   programSwitch: { borderRadius: 20, borderWidth: 1, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 10 },
   programGlyph: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   programLabel: { fontSize: 11, fontWeight: '600' },
   programName: { fontSize: 15, fontWeight: '800', marginTop: 2 },
   newProgram: { fontSize: 13, fontWeight: '800' },
   adherence: { fontSize: 13, fontWeight: '700' },
   dayList: { gap: 8 },
-  dayCard: { borderRadius: 16, overflow: 'hidden' },
+   dayCard: { borderRadius: 20, overflow: 'hidden' },
   dayHeader: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 },
   dayNumber: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   dayNumberText: { fontSize: 13, fontWeight: '800' },
   dayTitle: { fontSize: 15, fontWeight: '800' },
   dayMeta: { fontSize: 12, marginTop: 3 },
-  todayBody: { borderTopWidth: 1, padding: 14 },
+   todayBody: { borderTopWidth: 1, padding: 14 },
   todayHint: { fontSize: 12, lineHeight: 18, marginBottom: 15 },
-  exercise: { marginBottom: 18 },
+   exercise: { marginBottom: 12, borderWidth: 1, borderRadius: 17, padding: 12 },
   exerciseHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   exerciseName: { fontSize: 15, fontWeight: '800' },
   exerciseTarget: { fontSize: 12, fontWeight: '800', marginTop: 4 },
   exerciseGroup: { fontSize: 11, marginTop: 2 },
   finishHint: { textAlign: 'center', fontSize: 11, marginTop: 8 },
-  miniStats: { borderWidth: 1, borderRadius: 16, padding: 16, flexDirection: 'row', justifyContent: 'space-around', marginTop: 18 },
+   miniStats: { borderWidth: 1, borderRadius: 22, padding: 14, flexDirection: 'row', justifyContent: 'space-around', marginTop: 20 },
+   miniStat: { flex: 1, alignItems: 'center' },
+   miniIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 7 },
   miniDivider: { width: 1 },
   miniLabel: { fontSize: 11, fontWeight: '600' },
   miniValue: { fontSize: 17, fontWeight: '800', marginTop: 4 },
