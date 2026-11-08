@@ -33,6 +33,7 @@ export type Program = {
   cycleStart: string;
   cycleNumber: number;
   days: WorkoutDay[];
+  nextCycleDays?: WorkoutDay[];
 };
 
 export type WorkoutLog = {

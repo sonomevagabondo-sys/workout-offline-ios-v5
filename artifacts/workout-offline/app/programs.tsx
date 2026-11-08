@@ -1,14 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { createProgram, DayType, Exercise, exerciseCatalog } from '@/domain/workout';
+import { createProgram, DayType, daysBetween, Exercise, exerciseCatalog, Program } from '@/domain/workout';
 import { useWorkout } from '@/context/WorkoutContext';
 import { PrimaryButton, SecondaryButton } from '@/components/WorkoutUI';
 
 type PendingExercise = {
+  id?: string;
   name: string;
   group: string;
   defaultSets: string;
@@ -21,6 +22,8 @@ export default function ProgramsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const workout = useWorkout();
+  const scrollRef = useRef<ScrollView>(null);
+  const editorOffset = useRef(0);
   const [name, setName] = useState('');
   const [types, setTypes] = useState<DayType[]>(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
   const [dayNames, setDayNames] = useState<string[]>(Array.from({ length: 7 }, () => ''));
@@ -30,12 +33,42 @@ export default function ProgramsScreen() {
   const [exerciseName, setExerciseName] = useState('');
   const [targetSets, setTargetSets] = useState('');
   const [targetReps, setTargetReps] = useState('');
+  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const groups = useMemo(() => Array.from(new Set(exerciseCatalog.map((exercise) => exercise.group))), []);
   const [customGroup, setCustomGroup] = useState(groups[0] ?? 'Petto');
+  const editingProgram = workout.programs.find((program) => program.id === editingProgramId);
+  const editingElapsedDays = editingProgram ? Math.max(0, daysBetween(editingProgram.cycleStart, workout.today)) : 0;
+  const firstEditableDay = editingProgram ? (editingElapsedDays >= 6 ? 0 : editingElapsedDays + 1) : 0;
   const currentExercises = selected[dayIndex] ?? [];
 
   const setDayType = (index: number, type: DayType) => {
+    if (editingProgram && index < firstEditableDay) return;
     setTypes((current) => current.map((item, itemIndex) => (itemIndex === index ? type : item)));
+  };
+
+  const resetEditor = () => {
+    setEditingProgramId(null);
+    setName('');
+    setTypes(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
+    setDayNames(Array.from({ length: 7 }, () => ''));
+    setSelected({});
+    setDayIndex(0);
+  };
+
+  const editSavedProgram = (program: Program) => {
+    const elapsedDays = Math.max(0, daysBetween(program.cycleStart, workout.today));
+    const editableStart = elapsedDays >= 6 ? 0 : elapsedDays + 1;
+    const sourceDays = elapsedDays >= 6 ? (program.nextCycleDays ?? program.days) : program.days;
+    setEditingProgramId(program.id);
+    setName(program.name);
+    setTypes(sourceDays.map((day) => day.type));
+    setDayNames(sourceDays.map((day) => day.type === 'Rest' ? '' : day.name));
+    setSelected(sourceDays.reduce<Record<number, Exercise[]>>((result, day, index) => {
+      result[index] = day.exercises;
+      return result;
+    }, {}));
+    setDayIndex(editableStart);
+    requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: editorOffset.current, animated: true }));
   };
 
   const openExerciseConfig = (item: PendingExercise) => {
@@ -83,21 +116,27 @@ export default function ProgramsScreen() {
       return;
     }
     const exercise: Exercise = {
-      id: `${dayIndex}-${cleanName}-${Date.now()}`,
+      id: pending?.id ?? `${dayIndex}-${cleanName}-${Date.now()}`,
       name: cleanName,
       group: pending?.custom ? customGroup : pending?.group ?? 'Custom',
       custom: pending?.custom ?? false,
       targetSets: sets,
       targetReps: reps,
-      sets: Array.from({ length: sets }, (_, setIndex) => ({
-        id: `${dayIndex}-${cleanName}-${Date.now()}-${setIndex}`,
-        weight: '',
-        reps: '',
-      })),
+      sets: Array.from({ length: sets }, (_, setIndex) => {
+        const previousExercise = (selected[dayIndex] ?? []).find(
+          (item) => item.id === pending?.id || item.name === cleanName,
+        );
+        const previousSet = previousExercise?.sets[setIndex];
+        return {
+          id: previousSet?.id ?? `${dayIndex}-${cleanName}-${Date.now()}-${setIndex}`,
+          weight: previousSet?.weight ?? '',
+          reps: previousSet?.reps ?? '',
+        };
+      }),
     };
     setSelected((current) => {
       const list = current[dayIndex] ?? [];
-      const existingIndex = list.findIndex((item) => item.name === cleanName);
+      const existingIndex = list.findIndex((item) => item.id === pending?.id || item.name === cleanName);
       const next = existingIndex >= 0 ? list.map((item, index) => (index === existingIndex ? exercise : item)) : [...list, exercise];
       return { ...current, [dayIndex]: next };
     });
@@ -114,6 +153,7 @@ export default function ProgramsScreen() {
   const editExercise = (exercise: Exercise) => {
     openExerciseConfig({
       name: exercise.name,
+      id: exercise.id,
       group: exercise.group,
       defaultSets: String(exercise.targetSets),
       defaultReps: String(exercise.targetReps),
@@ -126,7 +166,7 @@ export default function ProgramsScreen() {
       Alert.alert('Scegli i giorni di allenamento', 'Imposta almeno un giorno come Allenamento prima di salvare il programma.');
       return;
     }
-    const missingExercises = types.findIndex((type, index) => type !== 'Rest' && (selected[index] ?? []).length === 0);
+    const missingExercises = types.findIndex((type, index) => index >= firstEditableDay && type !== 'Rest' && (selected[index] ?? []).length === 0);
     if (missingExercises >= 0) {
       setDayIndex(missingExercises);
       Alert.alert('Aggiungi un esercizio', `Il Giorno ${missingExercises + 1} è un giorno di allenamento: aggiungi almeno un esercizio.`);
@@ -134,16 +174,21 @@ export default function ProgramsScreen() {
     }
     const program = createProgram(
       name.trim() || 'Il mio programma',
-      types.map((type, index) => ({ type, name: dayNames[index], exercises: selected[index] ?? [] })),
+      types.map((type, index) => ({ type, name: dayNames[index], exercises: type === 'Rest' ? [] : selected[index] ?? [] })),
       workout.today,
     );
+    if (editingProgram) {
+      workout.updateProgram(editingProgram.id, program.name, program.days);
+      router.back();
+      return;
+    }
     workout.createNewProgram(program);
     router.back();
   };
 
   return (
     <View style={[page.root, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[page.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 }]} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={[page.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 32 }]} keyboardShouldPersistTaps="handled">
         <View style={page.header}><Pressable onPress={() => router.back()}><Feather name="x" size={24} color={colors.foreground} /></Pressable><Text style={[page.title, { color: colors.foreground }]}>Programmi</Text><View style={{ width: 24 }} /></View>
         <Text style={[page.subtitle, { color: colors.mutedForeground }]}>Crea un ciclo da 7 giorni. Per ogni esercizio scegli quanti set e quante ripetizioni target vuoi fare.</Text>
          <Text style={[page.label, { color: colors.foreground }]}>Programmi salvati</Text>
@@ -158,6 +203,7 @@ export default function ProgramsScreen() {
                  <View style={{ flex: 1 }}><Text style={[page.programRowName, { color: colors.foreground }]}>{program.name}</Text><Text style={[page.programRowMeta, { color: colors.mutedForeground }]}>{trainingDays} giorni · {exerciseCount} esercizi · ciclo {program.cycleNumber}</Text></View>
                  <Text style={[page.programStatus, { color: active ? colors.success : colors.primary }]}>{active ? 'ATTIVO' : 'ATTIVA'}</Text>
                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Modifica ${program.name}`} onPress={() => editSavedProgram(program)} hitSlop={8} style={page.rowAction}><Feather name="edit-2" size={16} color={colors.primary} /></Pressable>
                <Pressable onPress={() => {
                  if (workout.programs.length <= 1) {
                    Alert.alert('Programma necessario', 'Mantieni almeno un programma salvato.');
@@ -165,29 +211,41 @@ export default function ProgramsScreen() {
                  }
                  Alert.alert('Eliminare programma?', `Il programma "${program.name}" e il suo storico verranno eliminati.`, [
                    { text: 'Annulla', style: 'cancel' },
-                   { text: 'Elimina', style: 'destructive', onPress: () => { workout.deleteProgram(program.id); if (active) router.back(); } },
+                    { text: 'Elimina', style: 'destructive', onPress: () => { workout.deleteProgram(program.id); if (editingProgramId === program.id) resetEditor(); if (active) router.back(); } },
                  ]);
                }} hitSlop={8} style={page.deleteProgramButton}><Feather name="trash-2" size={16} color={workout.programs.length <= 1 ? colors.mutedForeground : colors.destructive} /></Pressable>
              </View>;
            })}
          </View>
-         <Text style={[page.sectionLabel, { color: colors.foreground }]}>Crea un nuovo programma</Text>
-        <Text style={[page.label, { color: colors.foreground }]}>Nome programma</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="es. Forza e controllo" placeholderTextColor={colors.mutedForeground} style={[page.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]} />
-        <Text style={[page.label, { color: colors.foreground }]}>Struttura settimana</Text>
-        {types.map((type, index) => (
-          <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border }]}>
-            <Pressable onPress={() => setDayIndex(index)} style={page.dayIndex}><View style={[page.dayIndexCircle, { backgroundColor: colors.muted }]}><Text style={[page.dayIndexText, { color: colors.mutedForeground }]}>{index + 1}</Text></View></Pressable>
-             <View style={{ flex: 1 }}><Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text>{type === 'Rest' ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>Riposo</Text> : <TextInput value={dayNames[index]} onChangeText={(value) => setDayNames((current) => current.map((currentName, nameIndex) => nameIndex === index ? value : currentName))} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} />}<Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{type !== 'Rest' ? `${(selected[index] ?? []).length} esercizi` : ''}</Text></View>
-              <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
-                {(['Upper', 'Rest'] as DayType[]).map((option) => {
-                 const selectedType = type === option;
-                  return <Pressable key={option} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable>;
-               })}
-             </View>
-          </View>
-        ))}
-        {types[dayIndex] !== 'Rest' ? (
+          <View style={page.formSection} onLayout={(event) => { editorOffset.current = event.nativeEvent.layout.y; }}>
+          <Text style={[page.sectionLabel, { color: colors.foreground }]}>{editingProgram ? 'Modifica programma' : 'Crea un nuovo programma'}</Text>
+          {editingProgram ? <View style={[page.editNotice, { backgroundColor: colors.accent }]}><Feather name="clock" size={15} color={colors.primary} /><Text style={[page.editNoticeText, { color: colors.accentForeground }]}>{editingElapsedDays >= 6 ? 'Le modifiche entreranno in vigore dal prossimo ciclo. Il ciclo attuale e i progressi restano invariati.' : 'Le modifiche si applicano ai giorni successivi. I giorni passati e quello di oggi restano invariati.'}</Text></View> : null}
+          <Text style={[page.label, { color: colors.foreground }]}>Nome programma</Text>
+          <TextInput value={name} onChangeText={setName} placeholder="es. Forza e controllo" placeholderTextColor={colors.mutedForeground} style={[page.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]} />
+          <Text style={[page.label, { color: colors.foreground }]}>Struttura settimana</Text>
+          {types.map((type, index) => {
+            const locked = Boolean(editingProgram && index < firstEditableDay);
+            const trainingSelected = type !== 'Rest';
+            return (
+              <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border, opacity: locked ? 0.62 : 1 }]}>
+                <Pressable onPress={() => setDayIndex(index)} style={page.dayIndex}><View style={[page.dayIndexCircle, { backgroundColor: colors.muted }]}><Text style={[page.dayIndexText, { color: colors.mutedForeground }]}>{index + 1}</Text></View></Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text>
+                  {type === 'Rest'
+                    ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>{locked ? 'Giorno passato' : 'Riposo'}</Text>
+                    : <TextInput value={dayNames[index]} editable={!locked} onChangeText={(value) => setDayNames((current) => current.map((currentName, nameIndex) => nameIndex === index ? value : currentName))} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} />}
+                  {type !== 'Rest' ? <Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{(selected[index] ?? []).length} esercizi{locked ? ' · già svolto' : ''}</Text> : null}
+                </View>
+                <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
+                  {(['Upper', 'Rest'] as DayType[]).map((option) => {
+                    const selectedType = option === 'Rest' ? !trainingSelected : trainingSelected;
+                    return <Pressable key={option} disabled={locked} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable>;
+                  })}
+                </View>
+              </View>
+            );
+          })}
+         {types[dayIndex] !== 'Rest' && !(editingProgram && dayIndex < firstEditableDay) ? (
           <View style={[page.exercisePicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={page.pickerHeader}><View><Text style={[page.pickerTitle, { color: colors.foreground }]}>Esercizi · giorno {dayIndex + 1}</Text><Text style={[page.pickerSubtitle, { color: colors.mutedForeground }]}>Tocca un esercizio e imposta il suo target</Text></View><Pressable onPress={() => setDayIndex((dayIndex + 1) % 7)}><Text style={[page.next, { color: colors.primary }]}>Prossimo</Text></Pressable></View>
             <View style={page.selectedHeader}><Text style={[page.groupTitle, { color: colors.mutedForeground }]}>AGGIUNTI ({currentExercises.length})</Text><Pressable onPress={openCustomConfig} style={[page.customButton, { backgroundColor: colors.accent }]}><Feather name="plus" size={14} color={colors.primary} /><Text style={[page.customButtonText, { color: colors.primary }]}>Custom</Text></Pressable></View>
@@ -196,8 +254,9 @@ export default function ProgramsScreen() {
             {groups.map((group) => <View key={group}><Text style={[page.catalogGroup, { color: colors.mutedForeground }]}>{group}</Text>{exerciseCatalog.filter((item) => item.group === group).map((item) => { const checked = currentExercises.some((exercise) => exercise.name === item.name); return <Pressable key={item.name} onPress={() => checked ? removeExercise(item.name) : openCatalogConfig(item)} style={page.exerciseChoice}><View style={[page.checkbox, { borderColor: checked ? colors.primary : colors.border, backgroundColor: checked ? colors.primary : 'transparent' }]}>{checked ? <Feather name="check" size={12} color={colors.primaryForeground} /> : null}</View><Text style={[page.choiceName, { color: colors.foreground }]}>{item.name}</Text><Text style={[page.choiceTarget, { color: colors.mutedForeground }]}>{checked ? 'Aggiunto' : `${item.sets}×${item.reps} suggerito`}</Text></Pressable>; })}</View>)}
           </View>
         ) : null}
-         <PrimaryButton label="Salva e attiva nuovo programma" icon="check" onPress={save} />
-        <SecondaryButton label="Annulla" onPress={() => router.back()} />
+          <PrimaryButton label={editingProgram ? 'Salva modifiche' : 'Salva e attiva nuovo programma'} icon="check" onPress={save} />
+          <SecondaryButton label={editingProgram ? 'Annulla modifica' : 'Annulla'} onPress={() => editingProgram ? resetEditor() : router.back()} />
+          </View>
       </ScrollView>
       <Modal visible={pending !== null} transparent animationType="slide" onRequestClose={closeExerciseConfig}>
         <View style={[page.modalBackdrop, { backgroundColor: `${colors.background}CC` }]}>
@@ -231,12 +290,16 @@ const page = StyleSheet.create({
   programList: { borderWidth: 1, borderRadius: 22, overflow: 'hidden' },
   programRow: { minHeight: 68, paddingLeft: 12, paddingRight: 10, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1 },
   programMain: { flex: 1, minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  rowAction: { padding: 8, marginLeft: 2 },
   deleteProgramButton: { padding: 8, marginLeft: 4 },
   programIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   programRowName: { fontSize: 14, fontWeight: '800' },
   programRowMeta: { fontSize: 11, marginTop: 4 },
   programStatus: { fontSize: 10, fontWeight: '900' },
   sectionLabel: { fontSize: 17, fontWeight: '900', marginTop: 9, letterSpacing: -0.2 },
+  formSection: { gap: 13 },
+  editNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 12, borderRadius: 15 },
+  editNoticeText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   label: { fontSize: 13, fontWeight: '800', marginTop: 6 },
   input: { minHeight: 52, borderWidth: 1, borderRadius: 16, paddingHorizontal: 15, fontSize: 15 },
   dayRow: { borderWidth: 1, borderRadius: 20, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 10 },

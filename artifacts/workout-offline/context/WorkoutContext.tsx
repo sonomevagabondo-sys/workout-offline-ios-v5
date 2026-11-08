@@ -27,6 +27,7 @@ type WorkoutContextValue = WorkoutState & {
   updateSet: (dayId: string, exerciseId: string, setId: string, field: keyof Pick<WorkoutSet, 'weight' | 'reps'>, value: string) => void;
   finishToday: () => { streak: number; epic: boolean; newRecord: boolean } | null;
   createNewProgram: (program: Program) => void;
+  updateProgram: (programId: string, name: string, days: WorkoutDay[]) => void;
   clearProfile: () => void;
   setProfileName: (name: string) => void;
   setUnit: (unit: 'kg' | 'lb') => void;
@@ -107,7 +108,7 @@ const normalizeState = (storedState: StoredWorkoutState, date: string): WorkoutS
       ...next.program,
       cycleStart: addDays(next.program.cycleStart, 7),
       cycleNumber: next.program.cycleNumber + 1,
-      days: next.program.days.map((day) => ({
+      days: (next.program.nextCycleDays ?? next.program.days).map((day) => ({
         ...day,
         completed: false,
         skipped: false,
@@ -117,6 +118,7 @@ const normalizeState = (storedState: StoredWorkoutState, date: string): WorkoutS
           sets: exercise.sets.map((set) => ({ ...set, weight: '', reps: '' })),
         })),
       })),
+      nextCycleDays: undefined,
     });
     elapsed = daysBetween(next.program.cycleStart, date);
     resetCount += 1;
@@ -237,6 +239,77 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const updateProgram = (programId: string, name: string, editedDays: WorkoutDay[]) => {
+    setState((current) => {
+      const existingProgram = current.programs.find((program) => program.id === programId);
+      if (!existingProgram) return current;
+
+      const elapsedDays = Math.max(0, daysBetween(existingProgram.cycleStart, today));
+      const latestPlan = existingProgram.nextCycleDays ?? existingProgram.days;
+      const mergeExercises = (previous: WorkoutDay, edited: WorkoutDay) =>
+        edited.exercises.map((exercise) => {
+          const previousExercise = previous.exercises.find(
+            (item) => item.id === exercise.id || item.name === exercise.name,
+          );
+          return {
+            ...exercise,
+            id: previousExercise?.id ?? exercise.id,
+            sets: exercise.sets.map((set, index) => {
+              const previousSet = previousExercise?.sets[index];
+              return {
+                ...set,
+                id: previousSet?.id ?? set.id,
+                weight: previousSet?.weight ?? set.weight,
+                reps: previousSet?.reps ?? set.reps,
+              };
+            }),
+          };
+        });
+
+      const nextCycleDays = editedDays.map((edited, index) => {
+        const previous = latestPlan[index] ?? existingProgram.days[index];
+        return {
+          ...previous,
+          order: index + 1,
+          name: edited.name,
+          type: edited.type,
+          exercises: mergeExercises(previous, edited),
+          completed: false,
+          skipped: false,
+          completedOn: undefined,
+        };
+      });
+
+      const days =
+        elapsedDays < 6
+          ? existingProgram.days.map((day, index) => {
+              if (index <= elapsedDays) return day;
+              const edited = editedDays[index];
+              if (!edited) return day;
+              return {
+                ...day,
+                name: edited.name,
+                type: edited.type,
+                exercises: mergeExercises(day, edited),
+              };
+            })
+          : existingProgram.days;
+
+      const updatedProgram: Program = {
+        ...existingProgram,
+        name: name.trim() || existingProgram.name,
+        days,
+        nextCycleDays,
+      };
+      const programs = current.programs.map((program) =>
+        program.id === programId ? updatedProgram : program,
+      );
+      return current.activeProgramId === programId
+        ? { ...current, program: updatedProgram, programs }
+        : { ...current, programs };
+    });
+  };
+
   const switchProgram = (programId: string) => {
     setState((current) => {
       const nextProgram = current.programs.find((program) => program.id === programId);
@@ -286,6 +359,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
       updateSet,
       finishToday,
       createNewProgram,
+      updateProgram,
       clearProfile,
       setProfileName,
       setUnit,

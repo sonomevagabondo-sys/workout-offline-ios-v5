@@ -1,0 +1,1 @@
+- [Program edit behavior](program-editing.md) — edits preserve the current cycle and progress, applying changes to future workout days.
