@@ -3,8 +3,8 @@ name: Program edit behavior
 description: Preserve workout progress while applying program edits to future days.
 ---
 
-When editing a saved program, keep completed days and the current day unchanged. Apply changes to later days in the current cycle and retain the complete edited schedule for the next cycle, without resetting the cycle date, cycle number, streak, or history.
+When editing a saved program, completed days can be changed as templates, and the chosen day's plan propagates to later days. Keep recorded completed sessions unchanged; for the active program, keep today's in-progress session unchanged. Preserve the program cycle date, cycle number, streak, and history.
 
-**Why:** Replacing the whole active-week schedule would alter today's session or recorded progress; changing only the remaining days without retaining a future-cycle schedule would lose edits at the next rollover.
+**Why:** The user wants edits to a completed day to shape all upcoming workouts, while completed training records and the active session remain trustworthy.
 
-**How to apply:** Keep active-week updates and the next-cycle schedule consistent with cycle rollover behavior. Preserve day and exercise IDs where possible so logs remain associated with the same program.
+**How to apply:** Apply changed templates to uncompleted future days and keep the complete plan for the next cycle. Preserve day and exercise IDs where possible so logs remain associated with the same program.

@@ -28,6 +28,7 @@ export default function ProgramsScreen() {
   const [types, setTypes] = useState<DayType[]>(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
   const [dayNames, setDayNames] = useState<string[]>(Array.from({ length: 7 }, () => ''));
   const [selected, setSelected] = useState<Record<number, Exercise[]>>({});
+  const [editedDayIndices, setEditedDayIndices] = useState<number[]>([]);
   const [dayIndex, setDayIndex] = useState(0);
   const [pending, setPending] = useState<PendingExercise | null>(null);
   const [exerciseName, setExerciseName] = useState('');
@@ -38,12 +39,30 @@ export default function ProgramsScreen() {
   const [customGroup, setCustomGroup] = useState(groups[0] ?? 'Petto');
   const editingProgram = workout.programs.find((program) => program.id === editingProgramId);
   const editingElapsedDays = editingProgram ? Math.max(0, daysBetween(editingProgram.cycleStart, workout.today)) : 0;
-  const firstEditableDay = editingProgram ? (editingElapsedDays >= 6 ? 0 : editingElapsedDays + 1) : 0;
   const currentExercises = selected[dayIndex] ?? [];
 
+  const markDayEdited = (index: number) => {
+    setEditedDayIndices((current) => current.includes(index) ? current : [...current, index]);
+  };
+
+  const isCurrentDayLocked = (index: number) =>
+    Boolean(
+      editingProgram &&
+      editingProgram.id === workout.activeProgramId &&
+      editingElapsedDays < 7 &&
+      index === editingElapsedDays,
+    );
+
   const setDayType = (index: number, type: DayType) => {
-    if (editingProgram && index < firstEditableDay) return;
+    if (isCurrentDayLocked(index) || types[index] === type) return;
+    markDayEdited(index);
     setTypes((current) => current.map((item, itemIndex) => (itemIndex === index ? type : item)));
+  };
+
+  const setDayName = (index: number, value: string) => {
+    if (isCurrentDayLocked(index)) return;
+    markDayEdited(index);
+    setDayNames((current) => current.map((currentName, nameIndex) => nameIndex === index ? value : currentName));
   };
 
   const resetEditor = () => {
@@ -52,14 +71,32 @@ export default function ProgramsScreen() {
     setTypes(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
     setDayNames(Array.from({ length: 7 }, () => ''));
     setSelected({});
+    setEditedDayIndices([]);
     setDayIndex(0);
   };
 
   const editSavedProgram = (program: Program) => {
     const elapsedDays = Math.max(0, daysBetween(program.cycleStart, workout.today));
     const editableStart = elapsedDays >= 6 ? 0 : elapsedDays + 1;
-    const sourceDays = elapsedDays >= 6 ? (program.nextCycleDays ?? program.days) : program.days;
+    const plannedDays = program.nextCycleDays ?? program.days;
+    const sourceDays = plannedDays.map((plannedDay, index) => {
+      const liveDay = program.days[index];
+      if (!liveDay) return plannedDay;
+      if (program.id === workout.activeProgramId && elapsedDays < 7 && index === elapsedDays) {
+        return liveDay;
+      }
+      if (elapsedDays >= 6 || (index < elapsedDays && program.nextCycleDays)) {
+        return {
+          ...plannedDay,
+          completed: liveDay.completed,
+          skipped: liveDay.skipped,
+          completedOn: liveDay.completedOn,
+        };
+      }
+      return liveDay;
+    });
     setEditingProgramId(program.id);
+    setEditedDayIndices([]);
     setName(program.name);
     setTypes(sourceDays.map((day) => day.type));
     setDayNames(sourceDays.map((day) => day.type === 'Rest' ? '' : day.name));
@@ -140,10 +177,13 @@ export default function ProgramsScreen() {
       const next = existingIndex >= 0 ? list.map((item, index) => (index === existingIndex ? exercise : item)) : [...list, exercise];
       return { ...current, [dayIndex]: next };
     });
+    markDayEdited(dayIndex);
     closeExerciseConfig();
   };
 
   const removeExercise = (exerciseNameToRemove: string) => {
+    if (isCurrentDayLocked(dayIndex)) return;
+    markDayEdited(dayIndex);
     setSelected((current) => ({
       ...current,
       [dayIndex]: (current[dayIndex] ?? []).filter((exercise) => exercise.name !== exerciseNameToRemove),
@@ -166,7 +206,13 @@ export default function ProgramsScreen() {
       Alert.alert('Scegli i giorni di allenamento', 'Imposta almeno un giorno come Allenamento prima di salvare il programma.');
       return;
     }
-    const missingExercises = types.findIndex((type, index) => index >= firstEditableDay && type !== 'Rest' && (selected[index] ?? []).length === 0);
+    const missingExercises = types.findIndex((type, index) => {
+      if (type === 'Rest' || isCurrentDayLocked(index) || (selected[index] ?? []).length > 0) return false;
+      const replacedByPropagation = editingProgram && editedDayIndices.some((sourceIndex) =>
+        sourceIndex !== index && (sourceIndex < index || (sourceIndex === 6 && index < 6)),
+      );
+      return !replacedByPropagation;
+    });
     if (missingExercises >= 0) {
       setDayIndex(missingExercises);
       Alert.alert('Aggiungi un esercizio', `Il Giorno ${missingExercises + 1} è un giorno di allenamento: aggiungi almeno un esercizio.`);
@@ -178,7 +224,7 @@ export default function ProgramsScreen() {
       workout.today,
     );
     if (editingProgram) {
-      workout.updateProgram(editingProgram.id, program.name, program.days);
+      workout.updateProgram(editingProgram.id, program.name, program.days, editedDayIndices);
       router.back();
       return;
     }
@@ -219,12 +265,19 @@ export default function ProgramsScreen() {
          </View>
           <View style={page.formSection} onLayout={(event) => { editorOffset.current = event.nativeEvent.layout.y; }}>
           <Text style={[page.sectionLabel, { color: colors.foreground }]}>{editingProgram ? 'Modifica programma' : 'Crea un nuovo programma'}</Text>
-          {editingProgram ? <View style={[page.editNotice, { backgroundColor: colors.accent }]}><Feather name="clock" size={15} color={colors.primary} /><Text style={[page.editNoticeText, { color: colors.accentForeground }]}>{editingElapsedDays >= 6 ? 'Le modifiche entreranno in vigore dal prossimo ciclo. Il ciclo attuale e i progressi restano invariati.' : 'Le modifiche si applicano ai giorni successivi. I giorni passati e quello di oggi restano invariati.'}</Text></View> : null}
+           {editingProgram ? <View style={[page.editNotice, { backgroundColor: colors.accent }]}><Feather name="clock" size={15} color={colors.primary} /><Text style={[page.editNoticeText, { color: colors.accentForeground }]}>{editingElapsedDays >= 6 ? 'Puoi modificare anche i giorni completati. La scheda scelta verrà applicata ai giorni successivi dal prossimo ciclo; lo storico resta invariato.' : editingProgram.id === workout.activeProgramId ? 'Puoi modificare anche i giorni completati: la scheda scelta verrà applicata a tutti i giorni successivi. Lo storico e la sessione di oggi restano invariati.' : 'Puoi modificare anche i giorni passati: la scheda scelta verrà applicata ai giorni successivi. Gli allenamenti già registrati restano invariati.'}</Text></View> : null}
           <Text style={[page.label, { color: colors.foreground }]}>Nome programma</Text>
           <TextInput value={name} onChangeText={setName} placeholder="es. Forza e controllo" placeholderTextColor={colors.mutedForeground} style={[page.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]} />
           <Text style={[page.label, { color: colors.foreground }]}>Struttura settimana</Text>
           {types.map((type, index) => {
-            const locked = Boolean(editingProgram && index < firstEditableDay);
+            const locked = isCurrentDayLocked(index);
+            const pastDay = Boolean(editingProgram && index < editingElapsedDays);
+            const savedDay = editingProgram?.days[index];
+            const pastLabel = savedDay?.completed
+              ? 'Completato · modificabile'
+              : savedDay?.skipped
+                ? 'Saltato · modificabile'
+                : 'Passato · modificabile';
             const trainingSelected = type !== 'Rest';
             return (
               <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border, opacity: locked ? 0.62 : 1 }]}>
@@ -232,9 +285,8 @@ export default function ProgramsScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text>
                   {type === 'Rest'
-                    ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>{locked ? 'Giorno passato' : 'Riposo'}</Text>
-                    : <TextInput value={dayNames[index]} editable={!locked} onChangeText={(value) => setDayNames((current) => current.map((currentName, nameIndex) => nameIndex === index ? value : currentName))} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} />}
-                  {type !== 'Rest' ? <Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{(selected[index] ?? []).length} esercizi{locked ? ' · già svolto' : ''}</Text> : null}
+                    ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>{locked ? 'Oggi · sessione invariata' : pastDay ? pastLabel : 'Riposo'}</Text>
+                    : <><TextInput value={dayNames[index]} editable={!locked} onChangeText={(value) => setDayName(index, value)} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} /><Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{(selected[index] ?? []).length} esercizi · {locked ? 'sessione di oggi invariata' : pastDay ? pastLabel : 'modificabile'}</Text></>}
                 </View>
                 <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
                   {(['Upper', 'Rest'] as DayType[]).map((option) => {
@@ -245,7 +297,7 @@ export default function ProgramsScreen() {
               </View>
             );
           })}
-         {types[dayIndex] !== 'Rest' && !(editingProgram && dayIndex < firstEditableDay) ? (
+         {types[dayIndex] !== 'Rest' && !isCurrentDayLocked(dayIndex) ? (
           <View style={[page.exercisePicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={page.pickerHeader}><View><Text style={[page.pickerTitle, { color: colors.foreground }]}>Esercizi · giorno {dayIndex + 1}</Text><Text style={[page.pickerSubtitle, { color: colors.mutedForeground }]}>Tocca un esercizio e imposta il suo target</Text></View><Pressable onPress={() => setDayIndex((dayIndex + 1) % 7)}><Text style={[page.next, { color: colors.primary }]}>Prossimo</Text></Pressable></View>
             <View style={page.selectedHeader}><Text style={[page.groupTitle, { color: colors.mutedForeground }]}>AGGIUNTI ({currentExercises.length})</Text><Pressable onPress={openCustomConfig} style={[page.customButton, { backgroundColor: colors.accent }]}><Feather name="plus" size={14} color={colors.primary} /><Text style={[page.customButtonText, { color: colors.primary }]}>Custom</Text></Pressable></View>

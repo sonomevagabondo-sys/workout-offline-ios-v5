@@ -27,7 +27,7 @@ type WorkoutContextValue = WorkoutState & {
   updateSet: (dayId: string, exerciseId: string, setId: string, field: keyof Pick<WorkoutSet, 'weight' | 'reps'>, value: string) => void;
   finishToday: () => { streak: number; epic: boolean; newRecord: boolean } | null;
   createNewProgram: (program: Program) => void;
-  updateProgram: (programId: string, name: string, days: WorkoutDay[]) => void;
+  updateProgram: (programId: string, name: string, days: WorkoutDay[], changedDayIndices: number[]) => void;
   clearProfile: () => void;
   setProfileName: (name: string) => void;
   setUnit: (unit: 'kg' | 'lb') => void;
@@ -239,72 +239,113 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const updateProgram = (programId: string, name: string, editedDays: WorkoutDay[]) => {
+  const updateProgram = (programId: string, name: string, editedDays: WorkoutDay[], changedDayIndices: number[]) => {
     setState((current) => {
       const existingProgram = current.programs.find((program) => program.id === programId);
       if (!existingProgram) return current;
 
       const elapsedDays = Math.max(0, daysBetween(existingProgram.cycleStart, today));
+      const isActiveProgram = current.activeProgramId === programId;
       const latestPlan = existingProgram.nextCycleDays ?? existingProgram.days;
-      const mergeExercises = (previous: WorkoutDay, edited: WorkoutDay) =>
-        edited.exercises.map((exercise) => {
+      const changed = [...new Set(changedDayIndices)].filter((index) => index >= 0 && index < 7).sort((a, b) => a - b);
+      const applyPlan = (previous: WorkoutDay, edited: WorkoutDay, clearSetValues: boolean): WorkoutDay => {
+        const exercises = edited.exercises.map((exercise) => {
           const previousExercise = previous.exercises.find(
             (item) => item.id === exercise.id || item.name === exercise.name,
           );
+          const exerciseId = previousExercise?.id ?? `${previous.id}-exercise-${exercise.id}`;
           return {
             ...exercise,
-            id: previousExercise?.id ?? exercise.id,
+            id: exerciseId,
             sets: exercise.sets.map((set, index) => {
               const previousSet = previousExercise?.sets[index];
               return {
                 ...set,
-                id: previousSet?.id ?? set.id,
-                weight: previousSet?.weight ?? set.weight,
-                reps: previousSet?.reps ?? set.reps,
+                id: previousSet?.id ?? `${exerciseId}-set-${index + 1}`,
+                weight: clearSetValues ? '' : previousSet?.weight ?? '',
+                reps: clearSetValues ? '' : previousSet?.reps ?? '',
               };
             }),
           };
         });
-
-      const nextCycleDays = editedDays.map((edited, index) => {
-        const previous = latestPlan[index] ?? existingProgram.days[index];
         return {
           ...previous,
-          order: index + 1,
           name: edited.name,
           type: edited.type,
-          exercises: mergeExercises(previous, edited),
-          completed: false,
-          skipped: false,
-          completedOn: undefined,
+          exercises,
         };
+      };
+
+      const prepareNextCycleDay = (previous: WorkoutDay, edited: WorkoutDay, index: number): WorkoutDay => ({
+        ...applyPlan(previous, edited, true),
+        order: index + 1,
+        completed: false,
+        skipped: false,
+        completedOn: undefined,
       });
 
-      const days =
-        elapsedDays < 6
+      let nextCycleDays = editedDays.map((edited, index) => {
+        const previous = latestPlan[index] ?? existingProgram.days[index];
+        return prepareNextCycleDay(previous, edited, index);
+      });
+      for (const sourceIndex of changed) {
+        const source = prepareNextCycleDay(
+          nextCycleDays[sourceIndex],
+          editedDays[sourceIndex],
+          sourceIndex,
+        );
+        nextCycleDays[sourceIndex] = source;
+        const targets = sourceIndex === 6
+          ? [0, 1, 2, 3, 4, 5]
+          : Array.from({ length: 6 - sourceIndex }, (_, offset) => sourceIndex + offset + 1);
+        targets.forEach((targetIndex) => {
+          nextCycleDays[targetIndex] = prepareNextCycleDay(
+            nextCycleDays[targetIndex],
+            source,
+            targetIndex,
+          );
+        });
+      }
+
+      let days =
+        elapsedDays < 7
           ? existingProgram.days.map((day, index) => {
-              if (index <= elapsedDays) return day;
+              if (
+                index < elapsedDays ||
+                (isActiveProgram && index === elapsedDays) ||
+                day.completed ||
+                !changed.includes(index)
+              ) return day;
               const edited = editedDays[index];
-              if (!edited) return day;
-              return {
-                ...day,
-                name: edited.name,
-                type: edited.type,
-                exercises: mergeExercises(day, edited),
-              };
+              return edited ? applyPlan(day, edited, false) : day;
             })
           : existingProgram.days;
+
+      if (elapsedDays < 7) {
+        for (const sourceIndex of changed) {
+          if (isActiveProgram && sourceIndex === elapsedDays) continue;
+          const startIndex = Math.max(elapsedDays + (isActiveProgram ? 1 : 0), sourceIndex + 1);
+          const source = sourceIndex < elapsedDays || (isActiveProgram && sourceIndex === elapsedDays)
+            ? editedDays[sourceIndex]
+            : applyPlan(existingProgram.days[sourceIndex], editedDays[sourceIndex], false);
+          for (let targetIndex = startIndex; targetIndex < 7; targetIndex += 1) {
+            if (!days[targetIndex].completed) {
+              days[targetIndex] = applyPlan(days[targetIndex], source, false);
+            }
+          }
+        }
+      }
 
       const updatedProgram: Program = {
         ...existingProgram,
         name: name.trim() || existingProgram.name,
         days,
-        nextCycleDays,
+        nextCycleDays: changed.length ? nextCycleDays : existingProgram.nextCycleDays,
       };
       const programs = current.programs.map((program) =>
         program.id === programId ? updatedProgram : program,
       );
-      return current.activeProgramId === programId
+      return isActiveProgram
         ? { ...current, program: updatedProgram, programs }
         : { ...current, programs };
     });
