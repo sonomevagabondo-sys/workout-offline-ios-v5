@@ -22,7 +22,7 @@ import {
 type WorkoutContextValue = WorkoutState & {
   hydrated: boolean;
   today: string;
-  todayDay: WorkoutDay;
+  todayDay: WorkoutDay | undefined;
   cycleDay: number;
   updateSet: (dayId: string, exerciseId: string, setId: string, field: keyof Pick<WorkoutSet, 'weight' | 'reps'>, value: string) => void;
   finishToday: () => { streak: number; epic: boolean; newRecord: boolean } | null;
@@ -229,7 +229,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
 
   const createNewProgram = (program: Program) => {
     setState((current) => {
-      const nextProgram = { ...program, cycleStart: today, cycleNumber: 1 };
+      const nextProgram = { ...program, cycleNumber: 1 };
       return {
         ...current,
         program: nextProgram,
@@ -244,7 +244,7 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
       const existingProgram = current.programs.find((program) => program.id === programId);
       if (!existingProgram) return current;
 
-      const elapsedDays = Math.max(0, daysBetween(existingProgram.cycleStart, today));
+      const elapsedDays = daysBetween(existingProgram.cycleStart, today);
       const isActiveProgram = current.activeProgramId === programId;
       const latestPlan = existingProgram.nextCycleDays ?? existingProgram.days;
       const changed = [...new Set(changedDayIndices)].filter((index) => index >= 0 && index < 7).sort((a, b) => a - b);
@@ -312,7 +312,6 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
           ? existingProgram.days.map((day, index) => {
               if (
                 index < elapsedDays ||
-                (isActiveProgram && index === elapsedDays) ||
                 day.completed ||
                 !changed.includes(index)
               ) return day;
@@ -323,7 +322,8 @@ export function WorkoutProvider({ children }: { children: React.ReactNode }) {
 
       if (elapsedDays < 7) {
         for (const sourceIndex of changed) {
-          if (isActiveProgram && sourceIndex === elapsedDays) continue;
+          const savedCurrentDay = sourceIndex === elapsedDays && existingProgram.days[sourceIndex]?.completed;
+          if (savedCurrentDay) continue;
           const startIndex = Math.max(elapsedDays + (isActiveProgram ? 1 : 0), sourceIndex + 1);
           const source = sourceIndex < elapsedDays || (isActiveProgram && sourceIndex === elapsedDays)
             ? editedDays[sourceIndex]

@@ -165,10 +165,13 @@ export const createDefaultProgram = (startDate = todayIso()): Program => ({
 });
 
 export const getCycleDayIndex = (program: Program, date: string) =>
-  Math.max(0, daysBetween(program.cycleStart, date));
+  daysBetween(program.cycleStart, date);
 
-export const getTodayDay = (program: Program, date: string) =>
-  program.days[Math.min(getCycleDayIndex(program, date), 6)];
+export const getTodayDay = (program: Program, date: string): WorkoutDay | undefined => {
+  const dayIndex = getCycleDayIndex(program, date);
+  if (dayIndex < 0) return undefined;
+  return program.days[Math.min(dayIndex, 6)];
+};
 
 export const isSetComplete = (set: WorkoutSet) =>
   Number(set.weight) > 0 && Number(set.reps) > 0;

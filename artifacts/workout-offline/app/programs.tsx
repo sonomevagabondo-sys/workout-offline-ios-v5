@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { createProgram, DayType, daysBetween, Exercise, exerciseCatalog, Program } from '@/domain/workout';
+import { addDays, createProgram, DayType, daysBetween, Exercise, exerciseCatalog, formatItalianDate, fromIsoDate, Program, toIsoDate } from '@/domain/workout';
 import { useWorkout } from '@/context/WorkoutContext';
 import { PrimaryButton, SecondaryButton } from '@/components/WorkoutUI';
 
@@ -25,6 +25,9 @@ export default function ProgramsScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const editorOffset = useRef(0);
   const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState(workout.today);
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => fromIsoDate(workout.today));
   const [types, setTypes] = useState<DayType[]>(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
   const [dayNames, setDayNames] = useState<string[]>(Array.from({ length: 7 }, () => ''));
   const [selected, setSelected] = useState<Record<number, Exercise[]>>({});
@@ -38,29 +41,47 @@ export default function ProgramsScreen() {
   const groups = useMemo(() => Array.from(new Set(exerciseCatalog.map((exercise) => exercise.group))), []);
   const [customGroup, setCustomGroup] = useState(groups[0] ?? 'Petto');
   const editingProgram = workout.programs.find((program) => program.id === editingProgramId);
-  const editingElapsedDays = editingProgram ? Math.max(0, daysBetween(editingProgram.cycleStart, workout.today)) : 0;
+  const editingElapsedDays = editingProgram ? daysBetween(editingProgram.cycleStart, workout.today) : 0;
+  const editingActiveToday = Boolean(
+    editingProgram &&
+    editingProgram.id === workout.activeProgramId &&
+    editingElapsedDays >= 0 &&
+    editingElapsedDays < 7,
+  );
+  const editingActiveTodaySaved = Boolean(
+    editingActiveToday &&
+    editingProgram?.days[editingElapsedDays]?.completed,
+  );
   const currentExercises = selected[dayIndex] ?? [];
+
+  const calendarCells = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const offset = (new Date(year, month, 1).getDay() + 6) % 7;
+    const dayCount = new Date(year, month + 1, 0).getDate();
+    return Array.from({ length: offset + dayCount }, (_, cellIndex) => {
+      if (cellIndex < offset) return null;
+      const day = cellIndex - offset + 1;
+      const date = toIsoDate(new Date(year, month, day));
+      return { date, day, disabled: date < workout.today, selected: date === startDate };
+    });
+  }, [calendarMonth, startDate, workout.today]);
+  const currentMonth = fromIsoDate(workout.today);
+  const canShowPreviousMonth =
+    calendarMonth.getFullYear() > currentMonth.getFullYear() ||
+    (calendarMonth.getFullYear() === currentMonth.getFullYear() && calendarMonth.getMonth() > currentMonth.getMonth());
 
   const markDayEdited = (index: number) => {
     setEditedDayIndices((current) => current.includes(index) ? current : [...current, index]);
   };
 
-  const isCurrentDayLocked = (index: number) =>
-    Boolean(
-      editingProgram &&
-      editingProgram.id === workout.activeProgramId &&
-      editingElapsedDays < 7 &&
-      index === editingElapsedDays,
-    );
-
   const setDayType = (index: number, type: DayType) => {
-    if (isCurrentDayLocked(index) || types[index] === type) return;
+    if (types[index] === type) return;
     markDayEdited(index);
     setTypes((current) => current.map((item, itemIndex) => (itemIndex === index ? type : item)));
   };
 
   const setDayName = (index: number, value: string) => {
-    if (isCurrentDayLocked(index)) return;
     markDayEdited(index);
     setDayNames((current) => current.map((currentName, nameIndex) => nameIndex === index ? value : currentName));
   };
@@ -68,6 +89,8 @@ export default function ProgramsScreen() {
   const resetEditor = () => {
     setEditingProgramId(null);
     setName('');
+    setStartDate(workout.today);
+    setDatePickerVisible(false);
     setTypes(['Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest', 'Rest']);
     setDayNames(Array.from({ length: 7 }, () => ''));
     setSelected({});
@@ -76,8 +99,8 @@ export default function ProgramsScreen() {
   };
 
   const editSavedProgram = (program: Program) => {
-    const elapsedDays = Math.max(0, daysBetween(program.cycleStart, workout.today));
-    const editableStart = elapsedDays >= 6 ? 0 : elapsedDays + 1;
+    const elapsedDays = daysBetween(program.cycleStart, workout.today);
+    const editableStart = elapsedDays < 0 || elapsedDays >= 7 ? 0 : elapsedDays;
     const plannedDays = program.nextCycleDays ?? program.days;
     const sourceDays = plannedDays.map((plannedDay, index) => {
       const liveDay = program.days[index];
@@ -106,6 +129,20 @@ export default function ProgramsScreen() {
     }, {}));
     setDayIndex(editableStart);
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ y: editorOffset.current, animated: true }));
+  };
+
+  const openStartDatePicker = () => {
+    setCalendarMonth(fromIsoDate(startDate));
+    setDatePickerVisible(true);
+  };
+
+  const changeCalendarMonth = (offset: number) => {
+    setCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + offset, 1));
+  };
+
+  const selectStartDate = (date: string) => {
+    setStartDate(date);
+    setDatePickerVisible(false);
   };
 
   const openExerciseConfig = (item: PendingExercise) => {
@@ -182,7 +219,6 @@ export default function ProgramsScreen() {
   };
 
   const removeExercise = (exerciseNameToRemove: string) => {
-    if (isCurrentDayLocked(dayIndex)) return;
     markDayEdited(dayIndex);
     setSelected((current) => ({
       ...current,
@@ -207,7 +243,7 @@ export default function ProgramsScreen() {
       return;
     }
     const missingExercises = types.findIndex((type, index) => {
-      if (type === 'Rest' || isCurrentDayLocked(index) || (selected[index] ?? []).length > 0) return false;
+      if (type === 'Rest' || (selected[index] ?? []).length > 0) return false;
       const replacedByPropagation = editingProgram && editedDayIndices.some((sourceIndex) =>
         sourceIndex !== index && (sourceIndex < index || (sourceIndex === 6 && index < 6)),
       );
@@ -221,7 +257,7 @@ export default function ProgramsScreen() {
     const program = createProgram(
       name.trim() || 'Il mio programma',
       types.map((type, index) => ({ type, name: dayNames[index], exercises: type === 'Rest' ? [] : selected[index] ?? [] })),
-      workout.today,
+      startDate,
     );
     if (editingProgram) {
       workout.updateProgram(editingProgram.id, program.name, program.days, editedDayIndices);
@@ -265,39 +301,51 @@ export default function ProgramsScreen() {
          </View>
           <View style={page.formSection} onLayout={(event) => { editorOffset.current = event.nativeEvent.layout.y; }}>
           <Text style={[page.sectionLabel, { color: colors.foreground }]}>{editingProgram ? 'Modifica programma' : 'Crea un nuovo programma'}</Text>
-           {editingProgram ? <View style={[page.editNotice, { backgroundColor: colors.accent }]}><Feather name="clock" size={15} color={colors.primary} /><Text style={[page.editNoticeText, { color: colors.accentForeground }]}>{editingElapsedDays >= 6 ? 'Puoi modificare anche i giorni completati. La scheda scelta verrà applicata ai giorni successivi dal prossimo ciclo; lo storico resta invariato.' : editingProgram.id === workout.activeProgramId ? 'Puoi modificare anche i giorni completati: la scheda scelta verrà applicata a tutti i giorni successivi. Lo storico e la sessione di oggi restano invariati.' : 'Puoi modificare anche i giorni passati: la scheda scelta verrà applicata ai giorni successivi. Gli allenamenti già registrati restano invariati.'}</Text></View> : null}
+           {editingProgram ? <View style={[page.editNotice, { backgroundColor: colors.accent }]}><Feather name="clock" size={15} color={colors.primary} /><Text style={[page.editNoticeText, { color: colors.accentForeground }]}>{editingActiveToday ? editingActiveTodaySaved ? 'La giornata di oggi è già salvata: la sua modifica sarà attiva dalla prossima occorrenza. Gli altri giorni non completati si aggiornano subito.' : 'Se modifichi la giornata di oggi, la modifica si applica subito. Le sessioni già completate restano invariate.' : editingElapsedDays >= 6 ? 'Puoi modificare anche i giorni completati. La scheda scelta verrà applicata ai giorni successivi dal prossimo ciclo; lo storico resta invariato.' : 'Puoi modificare anche i giorni completati: la scheda scelta verrà applicata a tutti i giorni successivi. Gli allenamenti già registrati restano invariati.'}</Text></View> : null}
           <Text style={[page.label, { color: colors.foreground }]}>Nome programma</Text>
           <TextInput value={name} onChangeText={setName} placeholder="es. Forza e controllo" placeholderTextColor={colors.mutedForeground} style={[page.input, { color: colors.foreground, backgroundColor: colors.card, borderColor: colors.border }]} />
+           {!editingProgram ? <>
+             <Text style={[page.label, { color: colors.foreground }]}>Data di inizio</Text>
+             <Pressable onPress={openStartDatePicker} style={[page.startDateButton, { backgroundColor: colors.card, borderColor: colors.border }]}>
+               <View style={[page.startDateIcon, { backgroundColor: colors.accent }]}><Feather name="calendar" size={16} color={colors.primary} /></View>
+               <View style={{ flex: 1 }}><Text style={[page.startDateValue, { color: colors.foreground }]}>{formatItalianDate(startDate)}</Text><Text style={[page.startDateHint, { color: colors.mutedForeground }]}>Oggi o una data futura</Text></View>
+               <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+             </Pressable>
+           </> : null}
           <Text style={[page.label, { color: colors.foreground }]}>Struttura settimana</Text>
           {types.map((type, index) => {
-            const locked = isCurrentDayLocked(index);
             const pastDay = Boolean(editingProgram && index < editingElapsedDays);
+            const isToday = editingActiveToday && index === editingElapsedDays;
             const savedDay = editingProgram?.days[index];
-            const pastLabel = savedDay?.completed
+            const dayLabel = isToday
+              ? savedDay?.completed
+                ? 'Completato · prossima volta'
+                : 'Oggi · applicazione immediata'
+              : savedDay?.completed
               ? 'Completato · modificabile'
               : savedDay?.skipped
                 ? 'Saltato · modificabile'
                 : 'Passato · modificabile';
             const trainingSelected = type !== 'Rest';
             return (
-              <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border, opacity: locked ? 0.62 : 1 }]}>
+              <View key={index} style={[page.dayRow, { backgroundColor: colors.card, borderColor: index === dayIndex ? colors.primary : colors.border }]}>
                 <Pressable onPress={() => setDayIndex(index)} style={page.dayIndex}><View style={[page.dayIndexCircle, { backgroundColor: colors.muted }]}><Text style={[page.dayIndexText, { color: colors.mutedForeground }]}>{index + 1}</Text></View></Pressable>
                 <View style={{ flex: 1 }}>
                   <Text style={[page.dayName, { color: colors.foreground }]}>Giorno {index + 1}</Text>
                   {type === 'Rest'
-                    ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>{locked ? 'Oggi · sessione invariata' : pastDay ? pastLabel : 'Riposo'}</Text>
-                    : <><TextInput value={dayNames[index]} editable={!locked} onChangeText={(value) => setDayName(index, value)} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} /><Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{(selected[index] ?? []).length} esercizi · {locked ? 'sessione di oggi invariata' : pastDay ? pastLabel : 'modificabile'}</Text></>}
+                    ? <Text style={[page.dayType, { color: colors.mutedForeground }]}>{isToday ? dayLabel : pastDay ? dayLabel : 'Riposo'}</Text>
+                    : <><TextInput value={dayNames[index]} onChangeText={(value) => setDayName(index, value)} placeholder="Nome allenamento (es. Push)" placeholderTextColor={colors.mutedForeground} style={[page.dayNameInput, { color: colors.foreground, borderColor: colors.border }]} /><Text style={[page.dayExerciseCount, { color: colors.mutedForeground }]}>{(selected[index] ?? []).length} esercizi · {isToday || pastDay ? dayLabel : 'modificabile'}</Text></>}
                 </View>
                 <View style={[page.typeOptions, { backgroundColor: colors.muted }]}>
                   {(['Upper', 'Rest'] as DayType[]).map((option) => {
                     const selectedType = option === 'Rest' ? !trainingSelected : trainingSelected;
-                    return <Pressable key={option} disabled={locked} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable>;
+                    return <Pressable key={option} onPress={() => setDayType(index, option)} style={[page.typeOption, { backgroundColor: selectedType ? colors.accent : 'transparent' }]}><Text style={[page.typeButtonText, { color: selectedType ? colors.primary : colors.mutedForeground }]}>{option === 'Rest' ? 'Riposo' : 'Allenamento'}</Text></Pressable>;
                   })}
                 </View>
               </View>
             );
           })}
-         {types[dayIndex] !== 'Rest' && !isCurrentDayLocked(dayIndex) ? (
+         {types[dayIndex] !== 'Rest' ? (
           <View style={[page.exercisePicker, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={page.pickerHeader}><View><Text style={[page.pickerTitle, { color: colors.foreground }]}>Esercizi · giorno {dayIndex + 1}</Text><Text style={[page.pickerSubtitle, { color: colors.mutedForeground }]}>Tocca un esercizio e imposta il suo target</Text></View><Pressable onPress={() => setDayIndex((dayIndex + 1) % 7)}><Text style={[page.next, { color: colors.primary }]}>Prossimo</Text></Pressable></View>
             <View style={page.selectedHeader}><Text style={[page.groupTitle, { color: colors.mutedForeground }]}>AGGIUNTI ({currentExercises.length})</Text><Pressable onPress={openCustomConfig} style={[page.customButton, { backgroundColor: colors.accent }]}><Feather name="plus" size={14} color={colors.primary} /><Text style={[page.customButtonText, { color: colors.primary }]}>Custom</Text></Pressable></View>
